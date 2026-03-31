@@ -10,27 +10,27 @@ export default function AdminSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Image Generation API</CardTitle>
-            <CardDescription>Higgsfield API credentials and model configuration</CardDescription>
+            <CardDescription>Vertex AI configuration for Gemini image generation</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-brand-teal">API Key</label>
-              <div className="rounded-md bg-gray-50 px-3 py-2 text-sm font-mono text-gray-400">
-                ••••••••••••••••
+              <label className="mb-1 block text-sm font-medium text-brand-teal">Google Cloud Project</label>
+              <div className="rounded-md bg-brand-cream px-3 py-2 text-sm font-mono text-brand-teal">
+                {process.env.GOOGLE_CLOUD_PROJECT || process.env.VERTEX_AI_PROJECT_ID || 'Not configured'}
               </div>
-              <p className="mt-1 text-xs text-gray-400">Managed via environment variables. Update in Vercel dashboard.</p>
+              <p className="mt-1 text-xs text-gray-400">Managed via environment variables and Google Cloud credentials.</p>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-brand-teal">API Secret</label>
-              <div className="rounded-md bg-gray-50 px-3 py-2 text-sm font-mono text-gray-400">
-                ••••••••••••••••
+              <label className="mb-1 block text-sm font-medium text-brand-teal">Location</label>
+              <div className="rounded-md bg-brand-cream px-3 py-2 text-sm font-mono text-brand-teal">
+                {process.env.GOOGLE_CLOUD_LOCATION || process.env.VERTEX_AI_LOCATION || 'global'}
               </div>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-brand-teal">Active Model</label>
               <div className="flex items-center gap-2">
                 <code className="rounded bg-brand-cream px-2 py-1 text-sm">
-                  {process.env.HIGGSFIELD_MODEL_ID || 'higgsfield-ai/soul/standard'}
+                  {process.env.VERTEX_AI_MODEL_ID || 'gemini-3-pro-image-preview'}
                 </code>
                 <Badge variant="success">Active</Badge>
               </div>

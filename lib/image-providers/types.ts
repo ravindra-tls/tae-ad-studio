@@ -5,9 +5,17 @@ export interface GenerateParams {
   modelId?: string;
 }
 
+export interface GeneratedAsset {
+  data: string;
+  mimeType: string;
+}
+
 export interface GenerateResult {
   requestId: string;
-  statusUrl: string;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw';
+  statusUrl?: string;
+  image?: GeneratedAsset;
+  error?: string;
 }
 
 export interface StatusResult {

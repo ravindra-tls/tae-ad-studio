@@ -1,5 +1,5 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { imageProvider } from '@/lib/image-providers';
+import { getGeneratedFileExtension, imageProvider } from '@/lib/image-providers';
 import { assemblePrompt } from '@/lib/prompt-assembler';
 import { NextResponse } from 'next/server';
 
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   const finalPrompt = assemblePrompt(product, prompt, aspectRatio || '1:1');
 
   // 5. Create generated_image record
-  const modelId = process.env.HIGGSFIELD_MODEL_ID || 'higgsfield-ai/soul/standard';
+  const modelId = process.env.VERTEX_AI_MODEL_ID || 'gemini-3-pro-image-preview';
 
   const { data: genImage, error: insertError } = await serviceClient
     .from('generated_images')
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       session_id: sessionId,
       prompt_used: finalPrompt,
       aspect_ratio: aspectRatio || '1:1',
-      api_provider: modelId,
+      api_provider: 'vertex-ai',
       model_id: modelId,
       status: 'queued',
     })
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
-  // 6. Call Higgsfield API
+  // 6. Call Vertex AI
   try {
     const result = await imageProvider.submitGeneration({
       prompt: finalPrompt,
@@ -72,11 +72,53 @@ export async function POST(request: Request) {
       modelId,
     });
 
-    // Update record with request_id
-    await serviceClient
-      .from('generated_images')
-      .update({ request_id: result.requestId, status: 'in_progress' })
-      .eq('id', genImage.id);
+    if (result.status === 'completed' && result.image) {
+      const imageBytes = Buffer.from(result.image.data, 'base64');
+      const fileExt = getGeneratedFileExtension(result.image.mimeType);
+      const filePath = `${user.id}/${genImage.id}.${fileExt}`;
+
+      const { error: uploadError } = await serviceClient
+        .storage
+        .from('generated-images')
+        .upload(filePath, imageBytes, {
+          contentType: result.image.mimeType,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw new Error(`Generated image upload failed: ${uploadError.message}`);
+      }
+
+      const { data: publicUrlData } = serviceClient
+        .storage
+        .from('generated-images')
+        .getPublicUrl(filePath);
+
+      await serviceClient
+        .from('generated_images')
+        .update({
+          request_id: result.requestId,
+          status: 'completed',
+          image_url: publicUrlData.publicUrl,
+        })
+        .eq('id', genImage.id);
+    } else if (result.status === 'failed' || result.status === 'nsfw') {
+      await serviceClient
+        .from('generated_images')
+        .update({
+          request_id: result.requestId,
+          status: result.status,
+          error_message: result.error || `Generation ${result.status}`,
+        })
+        .eq('id', genImage.id);
+
+      return NextResponse.json({ error: result.error || 'Image generation failed' }, { status: 500 });
+    } else {
+      await serviceClient
+        .from('generated_images')
+        .update({ request_id: result.requestId, status: 'in_progress' })
+        .eq('id', genImage.id);
+    }
 
     // 7. Increment usage
     await serviceClient.rpc('increment_usage', { user_id: user.id });

@@ -30,9 +30,17 @@ export async function GET(
     });
   }
 
-  // Poll Higgsfield
+  // Poll provider if the record is still in progress
   if (!genImage.request_id) {
     return NextResponse.json({ status: genImage.status });
+  }
+
+  if (genImage.api_provider === 'vertex-ai') {
+    return NextResponse.json({
+      status: genImage.status,
+      imageUrl: genImage.image_url,
+      error: genImage.error_message,
+    });
   }
 
   try {
