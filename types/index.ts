@@ -157,3 +157,17 @@ export interface ContextContribution {
   reviewer_note: string | null;
   created_at: string;
 }
+
+export interface FeedbackSubmission {
+  id: string;
+  user_id: string;
+  kind: 'feedback' | 'template_proposal';
+  title: string;
+  message: string;
+  template_name: string | null;
+  template_category: string | null;
+  prompt_example: string | null;
+  status: 'pending' | 'reviewed' | 'implemented' | 'rejected';
+  reviewer_note: string | null;
+  created_at: string;
+}

@@ -13,6 +13,7 @@ import {
   Sparkles,
   Package,
   Users,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +26,7 @@ interface SidebarProps {
 const NAV = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
   { href: '/session/new',  label: 'New Session',  icon: Folders },
+  { href: '/feedback',     label: 'Feedback',     icon: MessageSquarePlus },
 ];
 
 export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
@@ -175,6 +177,7 @@ export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
                   {[
                     { href: '/admin/products', label: 'Products', icon: Package },
                     { href: '/admin/users',    label: 'Users',    icon: Users   },
+                    { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },
                   ].map(({ href, label, icon: Icon }) => {
                     const active = pathname.startsWith(href);
                     return (
@@ -202,6 +205,7 @@ export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
                   {[
                     { href: '/admin/products', label: 'Products', icon: Package },
                     { href: '/admin/users',    label: 'Users',    icon: Users   },
+                    { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },
                   ].map(({ href, label, icon: Icon }) => (
                     <Link
                       key={href}
