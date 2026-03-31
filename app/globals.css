@@ -1,0 +1,358 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Spring physics custom properties ─────────────────────────── */
+:root {
+  --spring:       cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring-soft:  cubic-bezier(0.25, 1.20, 0.5,  1);
+  --smooth:       cubic-bezier(0.4,  0,    0.2,  1);
+  --snappy:       cubic-bezier(0.2,  0,    0,    1);
+  --dur-fast:     120ms;
+  --dur-base:     200ms;
+  --dur-slow:     350ms;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-brand-cream text-brand-navy antialiased;
+  }
+
+  /* Global interactive base — every button/link gets a smooth spring default */
+  button, a {
+    transition-property: color, background-color, border-color,
+                         box-shadow, transform, opacity, filter;
+    transition-duration: var(--dur-base);
+    transition-timing-function: var(--smooth);
+  }
+
+  button:active {
+    transition-duration: var(--dur-fast);
+  }
+}
+
+@layer utilities {
+  /* ── Page entrance ─────────────────────────────────────── */
+  .animate-fade-in {
+    animation: fadeIn 0.45s var(--smooth) both;
+  }
+
+  /* ── Checkmark SVG draw-in ─────────────────────────────── */
+  .animate-checkmark {
+    stroke-dasharray: 14;
+    stroke-dashoffset: 14;
+    animation: checkmarkDraw 0.28s var(--spring) forwards;
+  }
+
+  /* ── Checkbox box fill morph ───────────────────────────── */
+  .checkbox-box {
+    transition: background-color  var(--dur-base) var(--spring),
+                border-color      var(--dur-base) var(--spring),
+                transform         var(--dur-base) var(--spring),
+                box-shadow        var(--dur-base) var(--smooth);
+  }
+  .checkbox-box:active {
+    transform: scale(0.88);
+  }
+
+  /* ── Card select morph ─────────────────────────────────── */
+  .template-card {
+    transition: border-color  var(--dur-base) var(--spring),
+                box-shadow    var(--dur-base) var(--smooth),
+                transform     var(--dur-base) var(--spring),
+                background    var(--dur-slow) var(--smooth);
+  }
+  .template-card:hover  { transform: scale(1.004); }
+  .template-card:active { transform: scale(0.971); transition-duration: var(--dur-fast); }
+
+  /* ── Product card spring ─────────────────────────────────── */
+  .product-card {
+    transition: border-color  var(--dur-base) var(--spring),
+                box-shadow    var(--dur-base) var(--smooth),
+                transform     var(--dur-base) var(--spring),
+                background    var(--dur-slow) var(--smooth),
+                ring-color    var(--dur-base) var(--spring);
+  }
+  .product-card:hover  { transform: translateY(-2px) scale(1.008); }
+  .product-card:active { transform: scale(0.975); transition-duration: var(--dur-fast); }
+
+  /* ── Stagger entrance for grid children ──────────────────── */
+  .stagger-item {
+    animation: staggerIn 0.4s var(--smooth) both;
+  }
+
+  /* ── Session row hover spring ────────────────────────────── */
+  .session-row {
+    transition: background-color var(--dur-base) var(--smooth),
+                box-shadow       var(--dur-base) var(--smooth),
+                transform        var(--dur-base) var(--spring);
+  }
+  .session-row:hover  { transform: translateX(3px); }
+  .session-row:active { transform: translateX(1px) scale(0.995); transition-duration: var(--dur-fast); }
+
+  /* ── Filter pill ───────────────────────────────────────── */
+  .filter-pill {
+    transition: background-color  var(--dur-base) var(--spring),
+                color             var(--dur-base) var(--smooth),
+                border-color      var(--dur-base) var(--spring),
+                transform         var(--dur-fast) var(--spring),
+                box-shadow        var(--dur-base) var(--smooth);
+  }
+  .filter-pill:active { transform: scale(0.90); }
+
+  /* ── Edit button reveal ────────────────────────────────── */
+  .edit-btn {
+    transition: opacity      var(--dur-base) var(--smooth),
+                color        var(--dur-base) var(--smooth),
+                border-color var(--dur-base) var(--spring),
+                background   var(--dur-base) var(--smooth),
+                transform    var(--dur-base) var(--spring);
+  }
+  .edit-btn:hover  { transform: scale(1.05); }
+  .edit-btn:active { transform: scale(0.93); }
+
+  /* ── Custom scrollbar (modal content) ─────────────────── */
+  .scroll-spring {
+    scrollbar-width: thin;
+    scrollbar-color: #B9B78F transparent;
+    scroll-behavior: smooth;
+  }
+  .scroll-spring::-webkit-scrollbar       { width: 4px; }
+  .scroll-spring::-webkit-scrollbar-track { background: transparent; }
+  .scroll-spring::-webkit-scrollbar-thumb { background: #B9B78F; border-radius: 4px; }
+}
+
+/* ── Keyframes (outside @layer so they're always available) ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes checkmarkDraw {
+  from { stroke-dashoffset: 14; opacity: 0.4; }
+  to   { stroke-dashoffset: 0;  opacity: 1; }
+}
+
+@keyframes modalIn {
+  0%   { opacity: 0; transform: scale(0.90) translateY(16px); }
+  60%  { opacity: 1; transform: scale(1.02) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+/* ── Loading animation keyframes ── */
+
+/* Mortar gentle rock */
+.loading-anim-mortar {
+  animation: mortar-rock 4s ease-in-out infinite;
+}
+@keyframes mortar-rock {
+  0%, 100% { transform: rotate(0deg); }
+  25%      { transform: rotate(0.5deg); }
+  75%      { transform: rotate(-0.5deg); }
+}
+
+/* Pestle rocking motion */
+.loading-anim-pestle {
+  animation: pestle-rock 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes pestle-rock {
+  0%, 100% { transform: rotate(-12deg); }
+  50%      { transform: rotate(12deg); }
+}
+
+/* Particles rising */
+.loading-anim-particle {
+  animation: particle-rise 3s ease-out infinite;
+}
+@keyframes particle-rise {
+  0%   { cy: 115; opacity: 0; transform: scale(0.3); }
+  15%  { opacity: 0.9; transform: scale(1); }
+  70%  { opacity: 0.6; }
+  100% { cy: 40; opacity: 0; transform: scale(0.5); }
+}
+
+/* Sparkle twinkle */
+.loading-anim-sparkle {
+  animation: sparkle-twinkle 2.5s ease-in-out infinite;
+}
+@keyframes sparkle-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
+  30%      { opacity: 0.9; transform: scale(1.2) rotate(30deg); }
+  50%      { opacity: 0.7; transform: scale(1) rotate(45deg); }
+  70%      { opacity: 0.9; transform: scale(1.1) rotate(60deg); }
+  100%     { opacity: 0; transform: scale(0.5) rotate(90deg); }
+}
+
+/* Paintbrush painting motion */
+.loading-anim-brush {
+  animation: brush-paint 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes brush-paint {
+  0%, 100% { transform: translate(0, 0) rotate(-5deg); }
+  25%      { transform: translate(-25px, 15px) rotate(2deg); }
+  50%      { transform: translate(-50px, 30px) rotate(-3deg); }
+  75%      { transform: translate(-25px, 45px) rotate(1deg); }
+}
+
+/* Paint stroke appearing (dash offset) */
+.loading-anim-stroke {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: stroke-draw 3.5s ease-in-out infinite;
+}
+@keyframes stroke-draw {
+  0%   { stroke-dashoffset: 200; opacity: 0; }
+  10%  { opacity: 1; }
+  50%  { stroke-dashoffset: 0; opacity: 1; }
+  80%  { stroke-dashoffset: 0; opacity: 0.6; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+/* Paint drops falling */
+.loading-anim-drop {
+  animation: drop-fall 2.5s ease-in infinite;
+}
+@keyframes drop-fall {
+  0%   { opacity: 0; transform: translateY(0) scale(0.5); }
+  20%  { opacity: 0.8; transform: translateY(4px) scale(1); }
+  80%  { opacity: 0.5; transform: translateY(16px) scale(0.8); }
+  100% { opacity: 0; transform: translateY(24px) scale(0.3); }
+}
+
+/* Oil drop falling and resetting */
+.loading-anim-oil-drop {
+  animation: oil-fall 3s cubic-bezier(0.4, 0, 0.8, 1) infinite;
+}
+@keyframes oil-fall {
+  0%   { transform: translateY(0) scale(1); opacity: 0.9; }
+  60%  { transform: translateY(80px) scale(0.8); opacity: 0.9; }
+  70%  { transform: translateY(80px) scale(0.3); opacity: 0; }
+  71%  { transform: translateY(0) scale(0); }
+  85%  { transform: translateY(0) scale(1); opacity: 0.9; }
+  100% { transform: translateY(0) scale(1); opacity: 0.9; }
+}
+
+/* Ripple rings expanding */
+.loading-anim-ripple {
+  animation: ripple-expand 3s ease-out infinite;
+}
+@keyframes ripple-expand {
+  0%   { r: 8; opacity: 0.5; }
+  100% { r: 60; opacity: 0; }
+}
+
+/* Lotus petal breathing */
+.loading-anim-petal-front {
+  animation: petal-breathe 4s ease-in-out infinite;
+}
+.loading-anim-petal-mid {
+  animation: petal-breathe-mid 4.5s ease-in-out infinite;
+}
+.loading-anim-petal-back {
+  animation: petal-breathe-back 5s ease-in-out infinite;
+}
+@keyframes petal-breathe {
+  0%, 100% { transform: rotate(var(--r, 0deg)) scaleY(1); }
+  50%      { transform: rotate(var(--r, 0deg)) scaleY(1.08); }
+}
+@keyframes petal-breathe-mid {
+  0%, 100% { transform: rotate(var(--r, 0deg)) scaleY(1); }
+  50%      { transform: rotate(var(--r, 0deg)) scaleY(1.06); }
+}
+@keyframes petal-breathe-back {
+  0%, 100% { transform: rotate(var(--r, 0deg)) scaleY(1) scaleX(1); }
+  50%      { transform: rotate(var(--r, 0deg)) scaleY(1.05) scaleX(1.03); }
+}
+
+/* Lotus center pulse */
+.loading-anim-center-pulse {
+  animation: center-glow 3s ease-in-out infinite;
+}
+@keyframes center-glow {
+  0%, 100% { r: 10; opacity: 1; }
+  50%      { r: 12; opacity: 0.8; }
+}
+
+/* Bubble rising inside flask */
+.loading-anim-bubble {
+  animation: bubble-rise 2.5s ease-out infinite;
+}
+@keyframes bubble-rise {
+  0%   { cy: 200; opacity: 0; transform: scale(0.4); }
+  10%  { opacity: 0.8; transform: scale(1); }
+  80%  { opacity: 0.4; }
+  100% { cy: 130; opacity: 0; transform: scale(0.6); }
+}
+
+/* Liquid wave oscillation */
+.loading-anim-wave {
+  animation: wave-shift 3s ease-in-out infinite;
+}
+@keyframes wave-shift {
+  0%, 100% { d: path("M68,142 Q90,136 120,142 Q150,148 172,142"); }
+  50%      { d: path("M68,142 Q90,148 120,142 Q150,136 172,142"); }
+}
+
+/* Swirl inside liquid */
+.loading-anim-swirl {
+  animation: swirl-move 5s ease-in-out infinite;
+  stroke-dasharray: 60;
+  stroke-dashoffset: 0;
+}
+@keyframes swirl-move {
+  0%   { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -120; }
+}
+
+/* Steam rising */
+.loading-anim-steam {
+  animation: steam-rise 3s ease-out infinite;
+}
+@keyframes steam-rise {
+  0%   { cy: 50; opacity: 0.25; transform: scale(0.6); }
+  50%  { opacity: 0.15; }
+  100% { cy: 10; opacity: 0; transform: scale(1.5); }
+}
+
+/* Shadow pulsing */
+.loading-anim-shadow {
+  animation: shadow-pulse 3s ease-in-out infinite;
+}
+@keyframes shadow-pulse {
+  0%, 100% { opacity: 0.12; transform: scaleX(1); }
+  50%      { opacity: 0.08; transform: scaleX(1.05); }
+}
+
+@keyframes badgePop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  55%  { transform: scale(1.18); }
+  80%  { transform: scale(0.96); }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+@keyframes slideUp {
+  0%   { transform: translateY(110%); }
+  65%  { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
