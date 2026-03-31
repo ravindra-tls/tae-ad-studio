@@ -14,8 +14,10 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="mb-6 text-2xl font-bold text-brand-teal">User Management</h1>
-      <Card>
+      <div className="mb-6 stagger-item" style={{ animationDelay: '40ms' }}>
+        <h1 className="text-2xl font-bold text-brand-teal">User Management</h1>
+      </div>
+      <Card className="stagger-item" style={{ animationDelay: '100ms' }}>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -29,8 +31,12 @@ export default async function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {(users || []).map((user) => (
-                  <tr key={user.id} className="border-b border-brand-teal/5 hover:bg-brand-cream/20">
+                {(users || []).map((user, index: number) => (
+                  <tr
+                    key={user.id}
+                    className="stagger-item border-b border-brand-teal/5 hover:bg-brand-cream/20"
+                    style={{ animationDelay: `${140 + index * 45}ms` }}
+                  >
                     <td className="px-4 py-3">
                       <p className="font-medium text-brand-teal">{user.full_name || 'Unnamed'}</p>
                       <p className="text-xs text-gray-400">{user.email}</p>

@@ -14,17 +14,19 @@ export default async function ApprovalsPage() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="mb-6 text-2xl font-bold text-brand-teal">Pending Approvals</h1>
+      <div className="mb-6 stagger-item" style={{ animationDelay: '40ms' }}>
+        <h1 className="text-2xl font-bold text-brand-teal">Pending Approvals</h1>
+      </div>
       {!contributions?.length ? (
-        <Card>
+        <Card className="stagger-item" style={{ animationDelay: '100ms' }}>
           <CardContent className="py-12 text-center text-brand-slate">
             No pending contributions. All clear!
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {contributions.map((item: any) => (
-            <Card key={item.id}>
+          {contributions.map((item: any, index: number) => (
+            <Card key={item.id} className="stagger-item" style={{ animationDelay: `${100 + index * 60}ms` }}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>

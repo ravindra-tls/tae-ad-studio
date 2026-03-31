@@ -1,40 +1,37 @@
-import { createServiceClient } from '@/lib/supabase/server';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Image, Package, Clock, MessageSquarePlus } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { ImageIcon, Package } from 'lucide-react';
+import {
+  DashboardMainSection,
+  DashboardSummarySection,
+} from './dashboard-sections';
 
-export default async function AdminDashboard() {
-  const supabase = await createServiceClient();
-
-  const { count: userCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-  const { count: imageCount } = await supabase.from('generated_images').select('*', { count: 'exact', head: true }).eq('status', 'completed');
-  const { count: productCount } = await supabase.from('products').select('*', { count: 'exact', head: true });
-  const { count: pendingCount } = await supabase.from('context_contributions').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-  const { count: feedbackCount } = await supabase.from('feedback_submissions').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-
-  const stats = [
-    { label: 'Total Users', value: userCount || 0, icon: Users, color: 'text-brand-teal' },
-    { label: 'Images Generated', value: imageCount || 0, icon: Image, color: 'text-brand-gold' },
-    { label: 'Products', value: productCount || 0, icon: Package, color: 'text-green-600' },
-    { label: 'Pending Approvals', value: pendingCount || 0, icon: Clock, color: 'text-brand-wine' },
-    { label: 'Pending Feedback', value: feedbackCount || 0, icon: MessageSquarePlus, color: 'text-brand-forest' },
-  ];
-
+export default function AdminDashboard() {
   return (
-    <div className="animate-fade-in">
-      <h1 className="mb-8 text-2xl sm:text-3xl font-bold text-brand-teal text-center sm:text-left">Admin Dashboard</h1>
-      <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
-        {stats.map(({ label, value, icon: Icon, color }) => (
-          <Card key={label} className="h-full flex flex-col justify-between">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-brand-slate">{label}</CardTitle>
-              <Icon className={`h-5 w-5 ${color}`} />
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-brand-teal">{value}</p>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="animate-fade-in space-y-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-brand-teal">Admin Dashboard</h1>
+          <p className="mt-1 text-sm text-brand-slate">
+            Monitor generation activity, product coverage, and incoming team requests in one place.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/images">
+            <Button variant="outline" className="gap-2">
+              <ImageIcon className="h-4 w-4" /> View all images
+            </Button>
+          </Link>
+          <Link href="/admin/products">
+            <Button className="gap-2">
+              <Package className="h-4 w-4" /> Manage products
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      <DashboardSummarySection />
+      <DashboardMainSection />
     </div>
   );
 }

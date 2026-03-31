@@ -12,13 +12,15 @@ export default async function AdminProductsPage() {
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between stagger-item" style={{ animationDelay: '40ms' }}>
         <h1 className="text-xl font-bold text-brand-forest">Products</h1>
         <span className="text-xs text-brand-slate bg-brand-cream px-2 py-1 rounded">
           {(products || []).length} products
         </span>
       </div>
-      <ProductContextViewer products={(products || []) as Product[]} />
+      <div className="stagger-item" style={{ animationDelay: '100ms' }}>
+        <ProductContextViewer products={(products || []) as Product[]} />
+      </div>
     </div>
   );
 }

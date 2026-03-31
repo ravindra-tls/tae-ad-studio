@@ -12,10 +12,12 @@ export default async function AdminTemplatesPage() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="mb-6 text-2xl font-bold text-brand-teal">Prompt Templates</h1>
+      <div className="mb-6 stagger-item" style={{ animationDelay: '40ms' }}>
+        <h1 className="text-2xl font-bold text-brand-teal">Prompt Templates</h1>
+      </div>
       <div className="space-y-3">
-        {(templates || []).map((t: any) => (
-          <Card key={t.id}>
+        {(templates || []).map((t: any, index: number) => (
+          <Card key={t.id} className="stagger-item" style={{ animationDelay: `${80 + index * 50}ms` }}>
             <CardContent className="p-4">
               <div className="flex items-center gap-3 mb-2">
                 <span className="text-lg font-bold text-brand-teal">#{t.number}</span>

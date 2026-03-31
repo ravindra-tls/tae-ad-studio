@@ -46,7 +46,11 @@ export function ImageGallery({ images, onRegenerate, onDownload }: ImageGalleryP
     <>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {completedImages.map((image) => (
-          <div key={image.id} className="group relative rounded-lg border border-brand-teal/10 bg-white overflow-hidden">
+          <div
+            key={image.id}
+            className="group stagger-item relative rounded-lg border border-brand-teal/10 bg-white overflow-hidden"
+            style={{ animationDelay: `${completedImages.indexOf(image) * 60}ms` }}
+          >
             <div className="relative aspect-square">
               <Image
                 src={image.image_url!}
@@ -89,7 +93,11 @@ export function ImageGallery({ images, onRegenerate, onDownload }: ImageGalleryP
         ))}
 
         {pendingImages.map((image) => (
-          <div key={image.id} className="rounded-lg border border-brand-teal/10 bg-brand-cream/30 p-4">
+          <div
+            key={image.id}
+            className="stagger-item rounded-lg border border-brand-teal/10 bg-brand-cream/30 p-4"
+            style={{ animationDelay: `${(completedImages.length + pendingImages.indexOf(image)) * 60}ms` }}
+          >
             <div className="aspect-square flex items-center justify-center">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-teal border-t-transparent mx-auto mb-2" />
@@ -100,7 +108,11 @@ export function ImageGallery({ images, onRegenerate, onDownload }: ImageGalleryP
         ))}
 
         {failedImages.map((image) => (
-          <div key={image.id} className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div
+            key={image.id}
+            className="stagger-item rounded-lg border border-red-200 bg-red-50 p-4"
+            style={{ animationDelay: `${(completedImages.length + pendingImages.length + failedImages.indexOf(image)) * 60}ms` }}
+          >
             <div className="aspect-square flex items-center justify-center">
               <div className="text-center">
                 <Badge variant="destructive" className="mb-2">

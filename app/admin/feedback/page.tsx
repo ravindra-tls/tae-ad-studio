@@ -14,18 +14,20 @@ export default async function AdminFeedbackPage() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="mb-6 text-2xl font-bold text-brand-teal">Feedback & Template Proposals</h1>
+      <div className="mb-6 stagger-item" style={{ animationDelay: '40ms' }}>
+        <h1 className="text-2xl font-bold text-brand-teal">Feedback & Template Proposals</h1>
+      </div>
 
       {!submissions?.length ? (
-        <Card>
+        <Card className="stagger-item" style={{ animationDelay: '100ms' }}>
           <CardContent className="py-12 text-center text-brand-slate">
             No feedback submissions yet.
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {submissions.map((item: any) => (
-            <Card key={item.id}>
+          {submissions.map((item: any, index: number) => (
+            <Card key={item.id} className="stagger-item" style={{ animationDelay: `${100 + index * 60}ms` }}>
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle className="text-base">{item.title}</CardTitle>
