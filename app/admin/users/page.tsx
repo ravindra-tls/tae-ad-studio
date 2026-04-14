@@ -4,6 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
 import { UserActions } from './user-actions';
 
+// Always fetch live data — usage_count changes on every generation
+export const dynamic = 'force-dynamic';
+
 export default async function AdminUsersPage() {
   const supabase = await createServiceClient();
 

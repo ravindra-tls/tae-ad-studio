@@ -278,10 +278,13 @@ export function PromptWorkspace({
           }),
         });
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Generation failed (HTTP ${res.status})`);
+        }
         if (data.generatedImageId)
           navigateTo = `/session/${session.id}/generate?imageId=${data.generatedImageId}`;
       } else {
-        await Promise.all(
+        const results = await Promise.all(
           jobs.map((job) =>
             fetch('/api/generate/submit', {
               method: 'POST',
@@ -296,6 +299,13 @@ export function PromptWorkspace({
             })
           )
         );
+        // Throw if any job failed so the catch block can surface the error
+        for (const r of results) {
+          if (!r.ok) {
+            const errData = await r.json();
+            throw new Error(errData.error || `Generation failed (HTTP ${r.status})`);
+          }
+        }
         navigateTo = `/session/${session.id}/results`;
       }
 
@@ -310,13 +320,14 @@ export function PromptWorkspace({
         setPendingNavUrl(navigateTo);
         setGenerateComplete(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Generation failed:', err);
-      // Still honour minimum display on error
+      // Ensure minimum display time is respected even on error
       const elapsed = Date.now() - startedAt;
       if (elapsed < MIN_DISPLAY_MS) {
         await new Promise((r) => setTimeout(r, MIN_DISPLAY_MS - elapsed));
       }
+      alert(`Image generation failed: ${err.message}`);
       setIsSubmitting(false);
       setGenerateComplete(false);
     }

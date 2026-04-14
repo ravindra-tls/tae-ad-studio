@@ -158,6 +158,16 @@ export interface ContextContribution {
   created_at: string;
 }
 
+// Extended image type for the Gallery page — includes joined session/profile/product data
+export interface GalleryImage extends GeneratedImage {
+  creator_user_id:   string | null;
+  creator_name:      string;
+  creator_initials:  string;
+  product_id:        string | null;
+  product_name:      string | null;
+  product_sub_brand: string | null;
+}
+
 export interface FeedbackSubmission {
   id: string;
   user_id: string;

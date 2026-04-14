@@ -2,13 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Users, Package, CheckCircle, FileText, Settings, LayoutDashboard, MessageSquarePlus, ImageIcon } from 'lucide-react';
+import { Users, Package, CheckCircle, FileText, Settings, LayoutDashboard, MessageSquarePlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const adminLinks = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/images', label: 'Images', icon: ImageIcon },
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/approvals', label: 'Approvals', icon: CheckCircle },
   { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },

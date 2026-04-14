@@ -35,6 +35,46 @@
   button:active {
     transition-duration: var(--dur-fast);
   }
+
+  /*
+   * Pointer-tracking inner glow — opt-in via data-glow attribute.
+   * Only applied to <Button> CTA components (which set data-glow
+   * automatically). Rows, list items, bare icon buttons and other
+   * clickable elements are excluded.
+   * --gx / --gy are written by ButtonGlowTracker.tsx via a single
+   * delegated mousemove listener on document (zero re-renders).
+   */
+  [data-glow]:not([disabled]) {
+    position: relative;
+    isolation: isolate;
+  }
+  [data-glow]:not([disabled])::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    /*
+     * --gw / --gh are written in px by ButtonGlowTracker and match the
+     * button's aspect ratio (65 % width, 140 % height). The height overshoot
+     * lets light feather past the top/bottom edges — clipped by border-radius
+     * so it reads as natural spill, not overflow.
+     * Fallbacks (60% / 130%) apply on first render before JS hydrates.
+     * Two-stop falloff (hard centre → soft mid → gone) mimics a real light
+     * source rather than a flat circle.
+     */
+    background: radial-gradient(
+      ellipse var(--gw, 60%) var(--gh, 130%) at var(--gx, 50%) var(--gy, 50%),
+      rgba(255, 200,  80, 0.18)  0%,
+      rgba(255, 200,  80, 0.06) 55%,
+      transparent               100%
+    );
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--smooth);
+    pointer-events: none;
+  }
+  [data-glow]:not([disabled]):hover::after {
+    opacity: 1;
+  }
 }
 
 @layer utilities {

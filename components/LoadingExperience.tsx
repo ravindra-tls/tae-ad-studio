@@ -92,7 +92,11 @@ export function LoadingExperience({
       try {
         const result = await onStatusCheck();
         if (result.progress !== undefined) setProgress(result.progress);
-        if (result.status === 'completed') setProgress(100);
+        // Terminal states: stop fake progress first, then fill to 100%
+        if (result.status === 'completed' || result.status === 'failed' || result.status === 'nsfw') {
+          setIsCompleting(true);
+          setProgress(100);
+        }
       } catch { /* continue */ }
     }, pollIntervalMs);
     return () => clearInterval(interval);

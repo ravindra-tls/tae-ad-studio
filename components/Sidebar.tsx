@@ -14,7 +14,8 @@ import {
   Package,
   Users,
   MessageSquarePlus,
-  ImageIcon,
+  GalleryHorizontalEnd,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,7 @@ interface SidebarProps {
 const NAV = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
   { href: '/session/new',  label: 'New Session',  icon: Folders },
+  { href: '/gallery',      label: 'Gallery',      icon: GalleryHorizontalEnd },
   { href: '/feedback',     label: 'Feedback',     icon: MessageSquarePlus },
 ];
 
@@ -176,10 +178,10 @@ export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
               {!collapsed && (
                 <div className="ml-3 pl-3 border-l border-brand-wine/20 flex flex-col gap-0.5">
                   {[
-                    { href: '/admin/images',   label: 'Images',   icon: ImageIcon },
                     { href: '/admin/products', label: 'Products', icon: Package },
                     { href: '/admin/users',    label: 'Users',    icon: Users   },
                     { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },
+                    { href: '/admin/stats',    label: 'Stats',    icon: BarChart3 },
                   ].map(({ href, label, icon: Icon }) => {
                     const active = pathname.startsWith(href);
                     return (
@@ -205,10 +207,10 @@ export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
               {collapsed && (
                 <>
                   {[
-                    { href: '/admin/images',   label: 'Images',   icon: ImageIcon },
                     { href: '/admin/products', label: 'Products', icon: Package },
                     { href: '/admin/users',    label: 'Users',    icon: Users   },
                     { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },
+                    { href: '/admin/stats',    label: 'Stats',    icon: BarChart3 },
                   ].map(({ href, label, icon: Icon }) => (
                     <Link
                       key={href}

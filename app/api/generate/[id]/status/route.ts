@@ -35,7 +35,9 @@ export async function GET(
     return NextResponse.json({ status: genImage.status });
   }
 
-  if (genImage.api_provider === 'vertex-ai') {
+  // Synchronous providers — no async polling, DB record is the source of truth
+  const SYNC_PROVIDERS = ['vertex-ai', 'xai'];
+  if (SYNC_PROVIDERS.includes(genImage.api_provider)) {
     return NextResponse.json({
       status: genImage.status,
       imageUrl: genImage.image_url,

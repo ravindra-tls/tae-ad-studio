@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   const finalPrompt = assemblePrompt(product, prompt, aspectRatio || '1:1');
 
   // 5. Create generated_image record
-  const modelId = process.env.VERTEX_AI_MODEL_ID || 'gemini-3-pro-image-preview';
+  const modelId = process.env.XAI_MODEL_ID || 'grok-imagine-image';
 
   const { data: genImage, error: insertError } = await serviceClient
     .from('generated_images')
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       session_id: sessionId,
       prompt_used: finalPrompt,
       aspect_ratio: aspectRatio || '1:1',
-      api_provider: 'vertex-ai',
+      api_provider: 'xai',
       model_id: modelId,
       status: 'queued',
     })
@@ -121,7 +121,8 @@ export async function POST(request: Request) {
     }
 
     // 7. Increment usage
-    await serviceClient.rpc('increment_usage', { user_id: user.id });
+    const { error: rpcErr } = await serviceClient.rpc('increment_usage', { user_id: user.id });
+    if (rpcErr) console.error('[submit] increment_usage failed:', rpcErr.message);
 
     return NextResponse.json({
       generatedImageId: genImage.id,

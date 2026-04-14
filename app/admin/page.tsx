@@ -17,7 +17,7 @@ export default function AdminDashboard() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/admin/images">
+          <Link href="/gallery">
             <Button variant="outline" className="gap-2">
               <ImageIcon className="h-4 w-4" /> View all images
             </Button>

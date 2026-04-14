@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
+import { DashboardImagesGrid } from '@/components/DashboardImagesGrid';
 import {
   ArrowRight,
   FolderKanban,
@@ -99,7 +100,7 @@ export async function DashboardMainSection() {
   ] = await Promise.all([
     supabase
       .from('generated_images')
-      .select('id, image_url, prompt_used, aspect_ratio, created_at')
+      .select('id, session_id, image_url, prompt_used, aspect_ratio, api_provider, model_id, request_id, status, error_message, created_at')
       .eq('status', 'completed')
       .not('image_url', 'is', null)
       .order('created_at', { ascending: false })
@@ -129,7 +130,7 @@ export async function DashboardMainSection() {
               <CardTitle>Recent Generated Images</CardTitle>
               <CardDescription>Latest successful generations across all sessions</CardDescription>
             </div>
-            <Link href="/admin/images" className="text-sm text-brand-teal hover:underline flex items-center gap-1">
+            <Link href="/gallery" className="text-sm text-brand-teal hover:underline flex items-center gap-1">
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </CardHeader>
@@ -139,27 +140,7 @@ export async function DashboardMainSection() {
                 No generated images yet.
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {recentImages.slice(0, 6).map((image: any) => (
-                  <div key={image.id} className="group overflow-hidden rounded-xl border border-brand-teal/10 bg-white">
-                    <div className="relative aspect-[4/5] bg-brand-cream/30">
-                      <Image
-                        src={image.image_url}
-                        alt="Generated ad image"
-                        fill
-                        className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                      />
-                    </div>
-                    <div className="space-y-2 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <Badge variant="outline">{image.aspect_ratio}</Badge>
-                        <span className="text-xs text-brand-slate">{formatDate(image.created_at)}</span>
-                      </div>
-                      <p className="line-clamp-2 text-sm text-brand-slate">{image.prompt_used}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <DashboardImagesGrid images={recentImages as any} />
             )}
           </CardContent>
         </Card>

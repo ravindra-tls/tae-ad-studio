@@ -68,7 +68,7 @@ export default async function ResultsPage({ params }: { params: { id: string } }
         </p>
       </div>
 
-      <ImageGallery images={images || []} />
+      <ImageGallery images={images || []} userId={user.id} />
     </div>
   );
 }
