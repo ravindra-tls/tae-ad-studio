@@ -27,6 +27,28 @@ export default async function DashboardPage({
     .eq('id', user.id)
     .single();
 
+  // ── Prune empty sessions before loading the list ──────────────
+  const { data: allSessions } = await serviceClient
+    .from('sessions')
+    .select('id')
+    .eq('user_id', user.id);
+
+  if (allSessions?.length) {
+    const { data: populated } = await serviceClient
+      .from('generated_images')
+      .select('session_id')
+      .eq('status', 'completed')
+      .in('session_id', allSessions.map((s) => s.id));
+
+    const idsWithImages = new Set((populated ?? []).map((r) => r.session_id));
+    const emptyIds = allSessions.map((s) => s.id).filter((id) => !idsWithImages.has(id));
+
+    if (emptyIds.length > 0) {
+      await serviceClient.from('sessions').delete().in('id', emptyIds);
+    }
+  }
+
+  // ── Fetch the (now-clean) session list ───────────────────────
   const { data: sessions } = await serviceClient
     .from('sessions')
     .select('*, product:products(name, brand, sub_brand, thumbnail_url)')

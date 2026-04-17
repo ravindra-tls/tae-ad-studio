@@ -122,6 +122,47 @@ export async function seedProductThumbnails() {
   return updated;
 }
 
+export type ProductCreatePayload = {
+  name: string;
+  brand: string;
+  sub_brand?: string | null;
+  description?: string | null;
+  ingredients?: Ingredient[];
+  claims?: Claim[];
+  color_palette?: ColorEntry[];
+  prompt_modifier?: string | null;
+  compliance_rules?: string[];
+  context?: ProductContext | null;
+};
+
+export async function createProduct(data: ProductCreatePayload) {
+  const supabase = await createServiceClient();
+
+  const { data: product, error } = await supabase
+    .from('products')
+    .insert({
+      name:              data.name,
+      brand:             data.brand,
+      sub_brand:         data.sub_brand || null,
+      description:       data.description || null,
+      ingredients:       data.ingredients || [],
+      claims:            data.claims || [],
+      color_palette:     data.color_palette || [],
+      prompt_modifier:   data.prompt_modifier || null,
+      compliance_rules:  data.compliance_rules || [],
+      context:           data.context || null,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/admin/products');
+  revalidatePath('/session/new');
+  revalidatePath('/dashboard');
+  return product;
+}
+
 export async function deleteProduct(id: string) {
   const supabase = await createServiceClient();
 

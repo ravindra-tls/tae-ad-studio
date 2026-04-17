@@ -5,8 +5,9 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronRight, Pencil, X, Check, Plus, Trash2, Loader2, Info, Camera, ImageOff } from 'lucide-react';
 import type { Product, ProductContext, Ingredient, Claim, ColorEntry } from '@/types';
-import { updateProduct, deleteProduct, uploadProductThumbnail, seedProductThumbnails } from './actions';
-import type { ProductUpdatePayload } from './actions';
+import { updateProduct, deleteProduct, uploadProductThumbnail, seedProductThumbnails, createProduct } from './actions';
+import type { ProductUpdatePayload, ProductCreatePayload } from './actions';
+import ProductSynthesizeModal from '@/components/ProductSynthesizeModal';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Colour conversion helpers
@@ -816,6 +817,8 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
   const [uploadingImg,    setUploadingImg]    = useState(false);
   const [uploadError,     setUploadError]     = useState<string | null>(null);
   const [seedingImages,   setSeedingImages]   = useState(false);
+  const [synthModalOpen,  setSynthModalOpen]  = useState(false);
+  const [synthTarget,     setSynthTarget]     = useState<Product | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const product = products.find((p) => p.id === activeId) ?? products[0];
@@ -890,6 +893,40 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
 
   const setColor = (field: keyof ProductContext, c: { name: string; hex: string }) =>
     setCtx({ [field]: c });
+
+  // ── Synthesize modal save ───────────────────────────────────────────────
+  const handleSynthSave = async (data: any) => {
+    if (synthTarget) {
+      // Enriching existing product
+      const payload: ProductUpdatePayload = {
+        name:             data.name,
+        sub_brand:        data.sub_brand || null,
+        prompt_modifier:  data.prompt_modifier || null,
+        compliance_rules: data.compliance_rules || [],
+        ingredients:      data.ingredients || [],
+        claims:           data.claims || [],
+        color_palette:    data.color_palette || [],
+        context:          data.context || null,
+        thumbnail_url:    synthTarget.thumbnail_url,
+      };
+      await updateProduct(synthTarget.id, payload);
+    } else {
+      // Creating new product
+      const payload: ProductCreatePayload = {
+        name:             data.name,
+        brand:            data.brand,
+        sub_brand:        data.sub_brand || null,
+        description:      data.description || null,
+        ingredients:      data.ingredients || [],
+        claims:           data.claims || [],
+        color_palette:    data.color_palette || [],
+        prompt_modifier:  data.prompt_modifier || null,
+        compliance_rules: data.compliance_rules || [],
+        context:          data.context || null,
+      };
+      await createProduct(payload);
+    }
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1002,6 +1039,15 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
           })}
         </div>
 
+        {/* Add Product button */}
+        <button
+          type="button"
+          onClick={() => { setSynthTarget(null); setSynthModalOpen(true); }}
+          className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-white bg-brand-forest hover:bg-brand-forest/90 rounded-lg px-3 py-2.5 transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add Product
+        </button>
+
         {/* Seed local images button — shows only when any product lacks a thumbnail */}
         {products.some((p) => !p.thumbnail_url) && (
           <button
@@ -1102,6 +1148,13 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
                     <div key={i} className="h-5 w-5 rounded-full border border-black/10" style={{ backgroundColor: clr.hex }} title={`${clr.name} ${clr.hex}`} />
                   ))}
                 </div>
+                <button
+                  onClick={() => { setSynthTarget(product); setSynthModalOpen(true); }}
+                  className="flex items-center gap-1.5 text-xs text-brand-teal hover:text-brand-forest bg-brand-cream/60 border border-brand-teal/20 hover:border-brand-forest/30 rounded-md px-3 py-1.5 transition-all"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Enrich with AI
+                </button>
                 <button
                   onClick={enterEdit}
                   className="flex items-center gap-1.5 text-xs text-brand-slate/70 hover:text-brand-forest bg-white border border-brand-sage/30 hover:border-brand-forest/30 rounded-md px-3 py-1.5 transition-all"
@@ -1318,6 +1371,14 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
         </Section>
 
       </div>
+
+      {/* ── Synthesize Modal ─────────────────────────────────────────────── */}
+      <ProductSynthesizeModal
+        open={synthModalOpen}
+        onClose={() => { setSynthModalOpen(false); setSynthTarget(null); }}
+        onSave={handleSynthSave}
+        existingProduct={synthTarget}
+      />
     </div>
   );
 }

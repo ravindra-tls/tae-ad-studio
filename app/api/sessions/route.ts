@@ -12,10 +12,11 @@ async function pruneEmptySessions(serviceClient: Awaited<ReturnType<typeof creat
 
   if (!allSessions?.length) return;
 
-  // 2. Of those, find which ones actually have at least one generated image
+  // 2. Of those, find which ones actually have at least one completed image
   const { data: populated } = await serviceClient
     .from('generated_images')
     .select('session_id')
+    .eq('status', 'completed')
     .in('session_id', allSessions.map((s) => s.id));
 
   const idsWithImages = new Set((populated ?? []).map((r) => r.session_id));
