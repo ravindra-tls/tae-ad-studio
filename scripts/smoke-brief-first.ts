@@ -40,12 +40,14 @@ if (!process.env.ANTHROPIC_API_KEY) {
 import { briefStage } from '@/lib/pipeline/stages/brief';
 import { conceptStage } from '@/lib/pipeline/stages/concept';
 import { copyStage } from '@/lib/pipeline/stages/copy';
+import { visualStage } from '@/lib/pipeline/stages/visual';
 import {
   BriefStructured as BriefStructuredSchema,
   type BriefStructured,
 } from '@/lib/pipeline/schemas/brief';
 import { ConceptStructured as ConceptStructuredSchema } from '@/lib/pipeline/schemas/concept';
 import { CopyStructured as CopyStructuredSchema } from '@/lib/pipeline/schemas/copy';
+import { VisualStructured as VisualStructuredSchema } from '@/lib/pipeline/schemas/visual';
 import type { StageProgress } from '@/lib/pipeline/types';
 import type { BrandConfig, Product, Brief, Concept } from '@/types';
 
@@ -308,6 +310,73 @@ async function main() {
   const headlineWords = copy.headline.text.trim().split(/\s+/).length;
   if (headlineWords > 10) {
     console.warn(`⚠ Headline is ${headlineWords} words — prompt asks for ≤ 10.`);
+  }
+
+  // ── Stage 4: Visual (with the copy block for text-zone anchoring) ────────
+  const t4 = Date.now();
+  let visualOut;
+  try {
+    visualOut = await visualStage.run(
+      {
+        brief: fakeBriefRow,
+        concept: fakeConceptRow,
+        copy: { structured: copy as unknown as Record<string, unknown> },
+        product: FAKE_PRODUCT,
+        brand: FAKE_BRAND,
+        aspect_ratio: '4:5',
+      },
+      trace,
+    );
+  } catch (err) {
+    console.error(`\n✗ Visual stage threw: ${(err as Error).message}`);
+    process.exit(1);
+  }
+
+  const visualParse = VisualStructuredSchema.safeParse(visualOut.structured);
+  if (!visualParse.success) {
+    console.error(
+      `\n✗ Visual output failed schema validation: ${visualParse.error.message}`,
+    );
+    process.exit(1);
+  }
+  const visual = visualParse.data;
+
+  console.log(
+    `\n✓ Stage 4 Visual (${ms(t4)}) — aspect_ratio=${visual.aspect_ratio}, text_zones=${visual.text_zones.length}`,
+  );
+  log('visual.scene',            visual.scene);
+  log('visual.subject',          visual.subject);
+  log('visual.setting',          visual.setting);
+  log('visual.lighting_mood',    visual.lighting_mood);
+  log('visual.style',            visual.style);
+  log('visual.palette',          visual.palette);
+  log('visual.composition',      visual.composition);
+  log('visual.text_zones',       visual.text_zones);
+  log('visual.negative_prompts', visual.negative_prompts);
+  log('visual.prompt_text',      visual.prompt_text);
+
+  // Sanity: prompt_text length target 80-180 words. Warn outside range.
+  const promptWords = visual.prompt_text.trim().split(/\s+/).length;
+  if (promptWords < 60 || promptWords > 220) {
+    console.warn(
+      `⚠ prompt_text is ${promptWords} words — prompt asks for 80-180. Not fatal.`,
+    );
+  } else {
+    console.log(`\n✓ prompt_text length: ${promptWords} words (target 80-180)`);
+  }
+
+  // Sanity: text_zones should cover every copy element that exists.
+  const expectedZones = new Set<string>();
+  expectedZones.add('headline');
+  if (copy.subhead) expectedZones.add('subhead');
+  expectedZones.add('cta');
+  if (copy.disclosure) expectedZones.add('disclosure');
+  const actualZones = new Set(visual.text_zones.map((z) => z.element));
+  const missing = [...expectedZones].filter((e) => !actualZones.has(e as 'headline'));
+  if (missing.length > 0) {
+    console.warn(`⚠ Missing text_zones for copy elements: ${missing.join(', ')}`);
+  } else {
+    console.log(`✓ text_zones cover all present copy elements`);
   }
 
   // ── Trace summary (proves progress events are emitted) ───────────────────

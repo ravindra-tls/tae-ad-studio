@@ -232,6 +232,24 @@ export interface CopyBlock {
   created_at: string;
 }
 
+/**
+ * Pipeline stage 4 output — visual spec + the assembled image-provider
+ * prompt. copy_block_id is nullable (a spec can be generated from concept
+ * alone during exploration).
+ */
+export interface VisualSpec {
+  id: string;
+  concept_id: string;
+  brief_id: string;
+  copy_block_id: string | null;
+  prompt_text: string;
+  aspect_ratio: string;
+  structured: Record<string, unknown>;
+  prompt_version: string | null;
+  model: string | null;
+  created_at: string;
+}
+
 export interface GeneratedImage {
   id: string;
   session_id: string;
