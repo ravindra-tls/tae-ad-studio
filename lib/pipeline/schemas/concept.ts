@@ -87,3 +87,22 @@ export const SamenessVerdict = z.discriminatedUnion('status', [
 ]);
 
 export type SamenessVerdict = z.infer<typeof SamenessVerdict>;
+
+// ─── Per-index replacement (Claude response on regen) ────────────────────────
+//
+// When sameness flags specific concepts, we ask Claude to produce REPLACEMENT
+// concepts for just those indices — keeping the good ones intact. Claude
+// returns an array where each entry carries its target_index + the new
+// concept JSON. The stage splices these back into the batch at the specified
+// positions.
+
+export const ConceptReplacementItem = z.object({
+  target_index: z.number().int().min(0).max(4),
+  concept: ConceptStructured,
+});
+
+export const ConceptReplacementBatch = z.object({
+  replacements: z.array(ConceptReplacementItem).min(1).max(5),
+});
+
+export type ConceptReplacementBatch = z.infer<typeof ConceptReplacementBatch>;

@@ -192,3 +192,127 @@ export function buildSamenessUserMessage(concepts: unknown[]): string {
     'Return only the JSON verdict. No prose.',
   ].join('\n\n');
 }
+
+// ─── Per-index replacement prompt ────────────────────────────────────────────
+
+export const CONCEPT_REPLACEMENT_SYSTEM_PROMPT = `
+You are the same senior creative director from earlier. A batch of candidate
+concepts has been reviewed and SOME of them were flagged as structurally
+redundant. Your job is to produce REPLACEMENTS for just the flagged slots —
+leaving the kept concepts untouched.
+
+Return ONLY valid JSON matching this schema — no markdown, no prose:
+
+{
+  "replacements": [
+    {
+      "target_index": 0,
+      "concept": {
+        "schema_version": "1",
+        "title": "string",
+        "hook_archetype": "string (snake_case)",
+        "description": "string",
+        "visual_direction": "string",
+        "copy_direction": "string",
+        "leaning_on": {
+          "pains": ["string"],
+          "proof_points": ["string"]
+        }
+      }
+    }
+  ]
+}
+
+Rules:
+
+- Produce EXACTLY one replacement per flagged index (listed under "## Slots
+  to replace"). No more, no fewer.
+- Each replacement's hook_archetype must be structurally different from
+  BOTH the kept concepts AND the other replacements in this same batch.
+- Do NOT touch or re-emit the kept concepts. The caller already has them.
+- Grounding rules are unchanged: concepts inherit the brief's audience and
+  offer; factual claims come from the product / brief proof_points.
+- Respect STRICTNESS and WILD_CARD from the controls block.
+- Respect brand NON_NEGOTIABLES.
+`.trim();
+
+export function buildConceptReplacementUserMessage(args: {
+  brand: {
+    name: string;
+    voice: unknown;
+    visual: unknown;
+    non_negotiables: string[];
+  } | null;
+  product: {
+    name: string;
+    brand: string;
+    sub_brand: string | null;
+    ingredients: unknown;
+    claims: unknown;
+    context: unknown;
+  };
+  brief: {
+    objective: string | null;
+    structured: unknown;
+    strictness: 'off' | 'loose' | 'tight';
+    wild_card: boolean;
+  };
+  keptConcepts: Array<{ index: number; concept: unknown }>;
+  slotsToReplace: Array<{ index: number; reason: string }>;
+}): string {
+  const parts: string[] = [];
+
+  parts.push(`## Brand context\n${
+    args.brand
+      ? JSON.stringify(
+          {
+            name: args.brand.name,
+            voice: args.brand.voice,
+            visual: args.brand.visual,
+            non_negotiables: args.brand.non_negotiables,
+          },
+          null,
+          2,
+        )
+      : '(no brand_config row — fall back to product record)'
+  }`);
+
+  parts.push(`## Product\n${JSON.stringify(
+    {
+      name: args.product.name,
+      brand: args.product.brand,
+      sub_brand: args.product.sub_brand,
+      ingredients: args.product.ingredients,
+      claims: args.product.claims,
+      context: args.product.context,
+    },
+    null,
+    2,
+  )}`);
+
+  parts.push(`## Approved brief\n${JSON.stringify(
+    { objective: args.brief.objective, structured: args.brief.structured },
+    null,
+    2,
+  )}`);
+
+  parts.push(
+    '## Kept concepts (DO NOT re-emit — just avoid duplicating their angles)\n' +
+      JSON.stringify(args.keptConcepts, null, 2),
+  );
+
+  parts.push(
+    '## Slots to replace (produce one replacement per target_index, with the reason addressed)\n' +
+      JSON.stringify(args.slotsToReplace, null, 2),
+  );
+
+  parts.push(
+    `## Controls\n- STRICTNESS = ${args.brief.strictness}\n- WILD_CARD = ${args.brief.wild_card}`,
+  );
+
+  parts.push(
+    `Produce exactly ${args.slotsToReplace.length} replacement(s). Return ONLY the JSON object with a "replacements" array — no prose.`,
+  );
+
+  return parts.join('\n\n');
+}

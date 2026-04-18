@@ -2,9 +2,11 @@
  * Concept stage — Claude call with sameness detection.
  *
  * Stage 2 of 7. Given an approved brief, produces N (3-5) candidate creative
- * directions. Runs a sameness pass on the concept JSON; if any are judged
- * structurally redundant, regenerates the flagged ones (max 1 retry) before
- * returning.
+ * directions. Runs TWO sameness checks in parallel (Claude-judged + TF-IDF
+ * cosine) on every batch; regenerates ONLY the flagged indices in-place
+ * (kept concepts stay unchanged) before returning.
+ *
+ * See `sameness.ts` for the two-method design rationale.
  *
  * The API route (app/api/pipeline/concept) owns persistence; this file owns
  * only the LLM calls + validation + the sameness loop.
@@ -15,26 +17,25 @@ import type { BrandConfig, Brief, Product } from '@/types';
 import type { Stage, StageProgress } from '../types';
 import {
   ConceptBatchOutput,
+  ConceptReplacementBatch,
   ConceptStructured,
-  SamenessVerdict,
   type ConceptStructured as ConceptStructuredT,
-  type SamenessVerdict as SamenessVerdictT,
 } from '../schemas/concept';
 import {
   CONCEPT_PROMPT_VERSION,
+  CONCEPT_REPLACEMENT_SYSTEM_PROMPT,
   CONCEPT_SYSTEM_PROMPT,
   SAMENESS_PROMPT_VERSION,
-  SAMENESS_SYSTEM_PROMPT,
+  buildConceptReplacementUserMessage,
   buildConceptUserMessage,
-  buildSamenessUserMessage,
 } from '../prompts/concept';
+import { runSamenessChecks, type SamenessRound } from './sameness';
 
 const CONCEPT_MODEL = 'claude-sonnet-4-20250514';
 const CONCEPT_MAX_TOKENS = 4096;
-const SAMENESS_MODEL = 'claude-sonnet-4-20250514';
-const SAMENESS_MAX_TOKENS = 1024;
+const REPLACEMENT_MAX_TOKENS = 3072;
 
-/** How many times we'll re-ask after a sameness fail. 1 keeps latency bounded. */
+/** How many times we'll re-ask after sameness flags anything. 1 keeps latency bounded. */
 const MAX_SAMENESS_RETRIES = 1;
 
 export interface ConceptStageArgs {
@@ -49,7 +50,8 @@ export interface ConceptStageOutput {
   prompt_version: string;
   model: string;
   sameness_retries: number;
-  sameness_verdicts: SamenessVerdictT[];
+  /** One entry per sameness round (initial + up to MAX_SAMENESS_RETRIES). */
+  sameness_rounds: SamenessRound[];
 }
 
 function stripJsonFence(raw: string): string {
@@ -65,7 +67,7 @@ function extractText(response: Anthropic.Message): string {
     .join('');
 }
 
-/** Run the generation prompt once; returns N parsed concepts. */
+/** Generate an initial batch of N concepts. */
 async function generateBatch(
   anthropic: Anthropic,
   args: ConceptStageArgs,
@@ -123,66 +125,26 @@ async function generateBatch(
   return parsed.data.concepts;
 }
 
-/** Ask Claude whether any concepts in the batch are structurally redundant. */
-async function judgeSameness(
-  anthropic: Anthropic,
-  concepts: ConceptStructuredT[],
-): Promise<SamenessVerdictT> {
-  const response = await anthropic.messages.create({
-    model: SAMENESS_MODEL,
-    max_tokens: SAMENESS_MAX_TOKENS,
-    system: SAMENESS_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildSamenessUserMessage(concepts) }],
-  });
-
-  const text = extractText(response);
-  let json: unknown;
-  try {
-    json = JSON.parse(stripJsonFence(text));
-  } catch (err) {
-    // A malformed sameness response shouldn't fail the whole stage —
-    // treat it as "pass" and move on. Log so we notice pattern drift.
-    console.warn(
-      '[concept] sameness judge returned non-JSON, defaulting to pass:',
-      text.slice(0, 200),
-    );
-    return { status: 'pass' };
-  }
-
-  const parsed = SamenessVerdict.safeParse(json);
-  if (!parsed.success) {
-    console.warn(
-      '[concept] sameness verdict failed schema, defaulting to pass:',
-      parsed.error.message,
-    );
-    return { status: 'pass' };
-  }
-
-  return parsed.data;
-}
-
 /**
- * Regenerate specific indices in a batch. We ask Claude to produce fresh
- * directions for just those slots, given the full batch as "avoid these
- * patterns" context and the sameness reasons.
+ * Replace ONLY the flagged indices in-place. Kept concepts are passed to
+ * Claude as "do not duplicate these angles" context. Returns a new array
+ * with replacements spliced in at their target indices.
+ *
+ * If Claude returns the wrong count or targets an unflagged index, we log
+ * and keep the original batch rather than risk mangling it.
  */
-async function regenerateFlagged(
+async function regenerateFlaggedIndices(
   anthropic: Anthropic,
   args: ConceptStageArgs,
   current: ConceptStructuredT[],
-  verdict: Extract<SamenessVerdictT, { status: 'regenerate' }>,
+  flagged: Array<{ index: number; reason: string }>,
 ): Promise<ConceptStructuredT[]> {
-  // Build a "keep these, replace these" prompt. The simplest implementation:
-  // regenerate the whole batch with the rejected angles listed as anti-patterns.
-  // A per-index partial regen would save tokens but complicates schema; we
-  // can optimize later if cost shows up.
-  const rejectedSummaries = verdict.items
-    .map(
-      (it) => `  - Concept ${it.index} ("${current[it.index]?.title ?? ''}", archetype=${current[it.index]?.hook_archetype ?? ''}): ${it.reason}`,
-    )
-    .join('\n');
+  const flaggedSet = new Set(flagged.map((f) => f.index));
+  const keptConcepts = current
+    .map((concept, index) => ({ index, concept }))
+    .filter(({ index }) => !flaggedSet.has(index));
 
-  const augmented = buildConceptUserMessage({
+  const userMessage = buildConceptReplacementUserMessage({
     brand: args.brand,
     product: {
       name: args.product.name,
@@ -198,22 +160,15 @@ async function regenerateFlagged(
       strictness: args.brief.strictness,
       wild_card: args.brief.wild_card,
     },
-    count: args.count,
+    keptConcepts,
+    slotsToReplace: flagged,
   });
-
-  const avoidBlock = [
-    '',
-    '## Anti-patterns from previous attempt (DO NOT repeat these angles)',
-    rejectedSummaries,
-    '',
-    'Regenerate the full batch. Each concept must use a structurally different angle from the ones above, and all N archetypes must be distinct from each other.',
-  ].join('\n');
 
   const response = await anthropic.messages.create({
     model: CONCEPT_MODEL,
-    max_tokens: CONCEPT_MAX_TOKENS,
-    system: CONCEPT_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: augmented + avoidBlock }],
+    max_tokens: REPLACEMENT_MAX_TOKENS,
+    system: CONCEPT_REPLACEMENT_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userMessage }],
   });
 
   const text = extractText(response);
@@ -223,18 +178,45 @@ async function regenerateFlagged(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Concept stage regen: Claude returned non-JSON (${msg}). First 500 chars: ${text.slice(0, 500)}`,
+      `Concept regen: Claude returned non-JSON (${msg}). First 500 chars: ${text.slice(0, 500)}`,
     );
   }
 
-  const parsed = ConceptBatchOutput.safeParse(json);
+  const parsed = ConceptReplacementBatch.safeParse(json);
   if (!parsed.success) {
     throw new Error(
-      `Concept stage regen: response did not match batch schema. ${parsed.error.message}`,
+      `Concept regen: response did not match replacement schema. ${parsed.error.message}`,
     );
   }
 
-  return parsed.data.concepts;
+  // Validate that Claude only targeted flagged indices, and produced exactly
+  // one replacement per flagged slot. If it went off-script, refuse the regen
+  // rather than risk overwriting a kept concept.
+  const returnedIndices = new Set(parsed.data.replacements.map((r) => r.target_index));
+  if (returnedIndices.size !== parsed.data.replacements.length) {
+    throw new Error('Concept regen: duplicate target_index in replacements');
+  }
+  for (const idx of returnedIndices) {
+    if (!flaggedSet.has(idx)) {
+      throw new Error(
+        `Concept regen: Claude targeted index ${idx} which was not flagged`,
+      );
+    }
+  }
+  for (const idx of flaggedSet) {
+    if (!returnedIndices.has(idx)) {
+      throw new Error(
+        `Concept regen: missing replacement for flagged index ${idx}`,
+      );
+    }
+  }
+
+  // Splice replacements into the current array.
+  const next = [...current];
+  for (const { target_index, concept } of parsed.data.replacements) {
+    next[target_index] = concept;
+  }
+  return next;
 }
 
 export const conceptStage: Stage<ConceptStageArgs, ConceptStageOutput> = {
@@ -265,32 +247,37 @@ export const conceptStage: Stage<ConceptStageArgs, ConceptStageOutput> = {
     }
 
     // ── Sameness loop ─────────────────────────────────────────────────────
-    const verdicts: SamenessVerdictT[] = [];
+    const rounds: SamenessRound[] = [];
     let retries = 0;
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const verdict = await judgeSameness(anthropic, concepts);
-      verdicts.push(verdict);
+      const round = await runSamenessChecks(anthropic, concepts);
+      rounds.push(round);
 
-      if (verdict.status === 'pass') break;
+      if (round.regenerate.length === 0) break;
 
       if (retries >= MAX_SAMENESS_RETRIES) {
-        // We've hit the ceiling. Ship what we have — the UI can still surface
-        // the verdict so the marketer knows some concepts are redundant.
         console.warn(
-          `[concept] sameness retries exhausted; shipping batch with known redundancy:`,
-          verdict.items,
+          '[concept] sameness retries exhausted; shipping batch with known redundancy at indices:',
+          round.regenerate.map((r) => r.index),
         );
         break;
       }
 
       try {
-        concepts = await regenerateFlagged(anthropic, input, concepts, verdict);
+        concepts = await regenerateFlaggedIndices(
+          anthropic,
+          input,
+          concepts,
+          round.regenerate,
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Regen failure: keep the original batch, log, exit loop.
-        console.warn('[concept] regeneration failed, keeping original batch:', msg);
+        console.warn(
+          '[concept] per-index regeneration failed, keeping original batch:',
+          msg,
+        );
         break;
       }
 
@@ -302,7 +289,7 @@ export const conceptStage: Stage<ConceptStageArgs, ConceptStageOutput> = {
       prompt_version: CONCEPT_PROMPT_VERSION,
       model: CONCEPT_MODEL,
       sameness_retries: retries,
-      sameness_verdicts: verdicts,
+      sameness_rounds: rounds,
     };
 
     trace.push({
@@ -312,6 +299,7 @@ export const conceptStage: Stage<ConceptStageArgs, ConceptStageOutput> = {
       output: {
         concept_count: concepts.length,
         sameness_retries: retries,
+        sameness_rounds: rounds.length,
         sameness_prompt_version: SAMENESS_PROMPT_VERSION,
         model: CONCEPT_MODEL,
       },
@@ -321,6 +309,4 @@ export const conceptStage: Stage<ConceptStageArgs, ConceptStageOutput> = {
   },
 };
 
-// Re-export so callers can narrow the discriminated union without importing
-// from the schemas file.
 export { ConceptStructured };

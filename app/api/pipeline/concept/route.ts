@@ -14,7 +14,11 @@
  * Auth: user must own the brief (enforced via RLS on briefs → sessions).
  * Brand + product + brief write via service client once ownership is proven.
  *
- * Returns: { concepts: Concept[], trace: StageProgress[], sameness_retries, sameness_verdicts }
+ * Returns: { concepts: Concept[], trace: StageProgress[], sameness_retries, sameness_rounds }
+ *
+ * `sameness_rounds` is one entry per attempt, each carrying BOTH the Claude
+ * verdict and the TF-IDF cosine verdict side by side. The UI can render them
+ * so we can eyeball which method catches the right redundancy during dev.
  */
 
 import { NextResponse } from 'next/server';
@@ -149,10 +153,11 @@ export async function POST(request: Request) {
       concepts: insertedRows,
       trace,
       sameness_retries: stageOutput.sameness_retries,
-      sameness_verdicts: stageOutput.sameness_verdicts,
+      sameness_rounds: stageOutput.sameness_rounds,
       _meta: {
         prompt_version: CONCEPT_PROMPT_VERSION,
         sameness_prompt_version: SAMENESS_PROMPT_VERSION,
+        model: stageOutput.model,
       },
     },
     { status: 201 },
