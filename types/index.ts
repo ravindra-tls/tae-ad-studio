@@ -19,6 +19,24 @@ export interface FeatureFlag {
   updated_by: string | null;
 }
 
+/**
+ * Singleton brand configuration (id is always 1).
+ *
+ * `voice` and `visual` are open-ended JSONB — their shape is still evolving as
+ * V1 beds in. Treat them as free-form key/value objects for now. The pipeline
+ * passes them into Claude as prompt context.
+ */
+export interface BrandConfig {
+  id: 1;
+  name: string;
+  voice: Record<string, unknown>;
+  visual: Record<string, unknown>;
+  non_negotiables: string[];
+  default_strictness: 'off' | 'loose' | 'tight';
+  updated_at: string;
+  updated_by: string | null;
+}
+
 export interface ProductContext {
   // Colors (named + hex)
   primary_color?:    { name: string; hex: string };
