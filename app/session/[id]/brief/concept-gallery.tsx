@@ -15,7 +15,8 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ChevronDown, ChevronRight, Check, ArrowRight } from 'lucide-react';
 import { LoadingExperience } from '@/components/LoadingExperience';
 import type { Concept } from '@/types';
 import type {
@@ -37,11 +38,21 @@ interface ConceptStructured {
   };
 }
 
+const MAX_SELECTIONS = 2;
+
 interface ConceptGalleryProps {
   concepts: Concept[];
   samenessRounds: SamenessRound[];
   samenessRetries: number;
   loading?: boolean;
+  /**
+   * Toggle a concept's selection. Returns the updated row so the parent can
+   * refresh local state with the new selected_at timestamp. Should throw on
+   * HTTP failure so we can show an inline error.
+   */
+  onToggleSelect?: (conceptId: string, next: boolean) => Promise<Concept>;
+  /** Fired when the user clicks "Continue". Parent handles the routing. */
+  onContinue?: (selectedIds: string[]) => void;
 }
 
 export function ConceptGallery({
@@ -49,8 +60,29 @@ export function ConceptGallery({
   samenessRounds,
   samenessRetries,
   loading,
+  onToggleSelect,
+  onContinue,
 }: ConceptGalleryProps) {
   const [debugOpen, setDebugOpen] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [selectError, setSelectError] = useState<string | null>(null);
+
+  const selectedCount = concepts.filter((c) => c.selected_at !== null).length;
+  const atCap = selectedCount >= MAX_SELECTIONS;
+  const selectionEnabled = Boolean(onToggleSelect);
+
+  async function handleToggle(c: Concept, next: boolean) {
+    if (!onToggleSelect) return;
+    setSelectError(null);
+    setPendingId(c.id);
+    try {
+      await onToggleSelect(c.id, next);
+    } catch (err) {
+      setSelectError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPendingId(null);
+    }
+  }
 
   if (loading && concepts.length === 0) {
     return (
@@ -70,9 +102,23 @@ export function ConceptGallery({
   return (
     <div className="mt-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-brand-forest">
-          Concepts <span className="text-brand-slate font-normal">({concepts.length})</span>
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-brand-forest">
+            Concepts <span className="text-brand-slate font-normal">({concepts.length})</span>
+          </h2>
+          {selectionEnabled && (
+            <Badge
+              variant="outline"
+              className={
+                selectedCount > 0
+                  ? 'border-brand-teal/40 text-brand-teal'
+                  : 'border-brand-slate/30 text-brand-slate'
+              }
+            >
+              {selectedCount} / {MAX_SELECTIONS} selected
+            </Badge>
+          )}
+        </div>
         {samenessRetries > 0 && (
           <Badge variant="outline" className="border-brand-gold text-brand-gold">
             {samenessRetries} sameness retr{samenessRetries === 1 ? 'y' : 'ies'}
@@ -80,11 +126,58 @@ export function ConceptGallery({
         )}
       </div>
 
+      {selectError && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {selectError}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {concepts.map((c, i) => (
-          <ConceptCard key={c.id} concept={c} index={i} />
-        ))}
+        {concepts.map((c, i) => {
+          const isSelected = c.selected_at !== null;
+          const disabled =
+            !selectionEnabled ||
+            pendingId === c.id ||
+            (atCap && !isSelected); // can only deselect once at cap
+          return (
+            <ConceptCard
+              key={c.id}
+              concept={c}
+              index={i}
+              selected={isSelected}
+              selectable={selectionEnabled}
+              disabled={disabled}
+              pending={pendingId === c.id}
+              onToggle={(next) => handleToggle(c, next)}
+            />
+          );
+        })}
       </div>
+
+      {selectionEnabled && onContinue && (
+        <div className="flex items-center justify-between gap-3 mt-4 rounded-md border border-brand-cream bg-brand-cream/40 px-4 py-3">
+          <p className="text-xs text-brand-slate">
+            {selectedCount === 0
+              ? `Pick up to ${MAX_SELECTIONS} concepts to advance to copy + visuals.`
+              : selectedCount === 1
+                ? `1 concept selected. Add one more or continue.`
+                : `${selectedCount} concepts selected — ready to continue.`}
+          </p>
+          <Button
+            size="sm"
+            disabled={selectedCount === 0}
+            onClick={() =>
+              onContinue(
+                concepts.filter((c) => c.selected_at !== null).map((c) => c.id),
+              )
+            }
+          >
+            Continue with {selectedCount} concept
+            {selectedCount === 1 ? '' : 's'}
+            <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+          </Button>
+        </div>
+      )}
 
       {samenessRounds.length > 0 && (
         <div className="mt-3">
@@ -110,16 +203,59 @@ export function ConceptGallery({
   );
 }
 
-function ConceptCard({ concept, index }: { concept: Concept; index: number }) {
+function ConceptCard({
+  concept,
+  index,
+  selected,
+  selectable,
+  disabled,
+  pending,
+  onToggle,
+}: {
+  concept: Concept;
+  index: number;
+  selected: boolean;
+  selectable: boolean;
+  disabled: boolean;
+  pending: boolean;
+  onToggle: (next: boolean) => void;
+}) {
   const s = (concept.structured as ConceptStructured | null) ?? {};
   return (
-    <Card className="p-4 flex flex-col">
+    <Card
+      className={`p-4 flex flex-col transition-colors ${
+        selected ? 'ring-2 ring-brand-teal border-brand-teal' : ''
+      } ${pending ? 'opacity-70' : ''}`}
+    >
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-xs text-brand-slate">#{index}</div>
-          <h3 className="text-base font-semibold text-brand-forest leading-snug">
-            {concept.title}
-          </h3>
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          {selectable && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={selected}
+              aria-label={
+                selected
+                  ? `Deselect concept ${index + 1}`
+                  : `Select concept ${index + 1}`
+              }
+              onClick={() => !disabled && onToggle(!selected)}
+              disabled={disabled}
+              className={`mt-0.5 h-5 w-5 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
+                selected
+                  ? 'bg-brand-teal border-brand-teal text-white'
+                  : 'border-brand-slate/40 bg-white hover:border-brand-teal'
+              } ${disabled && !selected ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              {selected && <Check className="h-3.5 w-3.5" />}
+            </button>
+          )}
+          <div className="min-w-0">
+            <div className="text-xs text-brand-slate">#{index}</div>
+            <h3 className="text-base font-semibold text-brand-forest leading-snug">
+              {concept.title}
+            </h3>
+          </div>
         </div>
         <Badge variant="secondary" className="shrink-0">
           {concept.hook_archetype ?? 'unknown'}

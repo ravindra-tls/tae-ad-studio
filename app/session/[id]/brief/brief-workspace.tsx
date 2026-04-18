@@ -127,6 +127,37 @@ export function BriefWorkspace({
     setPhase('form');
   }
 
+  /**
+   * Toggle a concept's selection via PATCH /api/pipeline/concept/[id]/select.
+   * Throws on non-200 so ConceptGallery can show an inline error (e.g. the
+   * 409 from the max-2 selection cap).
+   */
+  async function handleToggleSelect(
+    conceptId: string,
+    next: boolean,
+  ): Promise<Concept> {
+    const res = await fetch(`/api/pipeline/concept/${conceptId}/select`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ selected: next }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+
+    const updated = data.concept as Concept;
+    setConcepts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    return updated;
+  }
+
+  function handleContinue(selectedIds: string[]) {
+    // Phase 2 target: hand off to copy/visual generation. For the shell we just
+    // surface a message so the whole flow is clickable end-to-end.
+    setError(
+      `Selected ${selectedIds.length} concept${selectedIds.length === 1 ? '' : 's'}. Downstream copy + visual generation lands in Phase 2.`,
+    );
+  }
+
   const productName = session.product?.name ?? 'Session';
 
   return (
@@ -189,6 +220,8 @@ export function BriefWorkspace({
           samenessRounds={samenessRounds}
           samenessRetries={samenessRetries}
           loading={conceptLoading}
+          onToggleSelect={handleToggleSelect}
+          onContinue={handleContinue}
         />
       )}
     </div>
