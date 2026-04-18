@@ -6,7 +6,8 @@
     "dev": "next dev -p 5020",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "smoke:brief-first": "tsx --tsconfig tsconfig.json scripts/smoke-brief-first.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
@@ -41,6 +42,7 @@
     "eslint-config-next": "14.2.5",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.5.3"
   }
 }
