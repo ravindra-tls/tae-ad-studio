@@ -134,10 +134,28 @@ export interface ColorEntry {
 export interface ProductImage {
   id: string;
   product_id: string;
-  url: string;
+  /**
+   * Legacy / external URL. Kept for backwards compat with static
+   * /public/product_images assets and any pre-migration rows.
+   * New uploads populate storage_path instead and leave this null.
+   */
+  url: string | null;
+  /** Path within `storage_bucket` when the file lives in Supabase Storage. */
+  storage_path: string | null;
+  /** Bucket id. Defaults to `product-references` for new uploads. */
+  storage_bucket: string | null;
   label: string | null;
   is_reference: boolean;
   created_at: string;
+}
+
+/**
+ * ProductImage with a resolved, model-fetchable URL. The resolver may return
+ * a short-lived signed URL (for private-bucket images) or the legacy `url`
+ * field passed through unchanged.
+ */
+export interface ResolvedProductImage extends ProductImage {
+  resolved_url: string;
 }
 
 export interface PromptTemplate {

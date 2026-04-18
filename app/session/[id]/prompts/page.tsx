@@ -1,6 +1,8 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { PromptWorkspace } from './prompt-workspace';
+import { resolveReferenceImages } from '@/lib/storage/reference-images';
+import type { ProductImage } from '@/types';
 
 export default async function PromptsPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
@@ -36,12 +38,21 @@ export default async function PromptsPage({ params }: { params: { id: string } }
     .eq('product_id', session.product_id)
     .eq('is_reference', true);
 
+  // For reference rows that live in the private bucket, mint a signed URL and
+  // project it onto `url` so PromptWorkspace can treat every row the same.
+  // Legacy rows (with `url` already set) pass through unchanged.
+  const resolved = await resolveReferenceImages((refImages || []) as ProductImage[]);
+  const referenceImages: ProductImage[] = resolved.map((r) => ({
+    ...r,
+    url: r.resolved_url,
+  }));
+
   return (
     <PromptWorkspace
       session={session}
       product={session.product}
       templates={templates || []}
-      referenceImages={refImages || []}
+      referenceImages={referenceImages}
       remainingCredits={Math.max(0, (profile?.usage_cap || 30) - (profile?.usage_count || 0))}
     />
   );

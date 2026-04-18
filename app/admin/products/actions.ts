@@ -1,8 +1,25 @@
 'use server';
 
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import type { ProductContext, Ingredient, Claim, ColorEntry } from '@/types';
+import type { ProductContext, Ingredient, Claim, ColorEntry, ProductImage } from '@/types';
+
+const REFERENCE_BUCKET = 'product-references';
+
+/** Shared admin gate for server actions. Throws on non-admin callers. */
+async function assertAdmin() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const service = await createServiceClient();
+  const { data: profile } = await service
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+  if (profile?.role !== 'admin') throw new Error('Forbidden');
+}
 
 export type ProductUpdatePayload = {
   name: string;
@@ -173,5 +190,110 @@ export async function deleteProduct(id: string) {
 
   if (error) throw new Error(error.message);
 
+  revalidatePath('/admin/products');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reference images — private bucket, signed-URL reads
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Upload a reference image for a product. Writes to the private
+ * `product-references` bucket and inserts a `product_images` row with
+ * `is_reference = true` and `storage_path` populated. Admin-only.
+ */
+export async function uploadProductReferenceImage(
+  productId: string,
+  formData: FormData,
+): Promise<ProductImage> {
+  await assertAdmin();
+  const supabase = await createServiceClient();
+
+  const file = formData.get('file') as File | null;
+  const label = (formData.get('label') as string | null)?.trim() || null;
+  if (!file || file.size === 0) throw new Error('No file provided');
+
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `${productId}/${crypto.randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(REFERENCE_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false });
+
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data: row, error: insertError } = await supabase
+    .from('product_images')
+    .insert({
+      product_id: productId,
+      storage_path: path,
+      storage_bucket: REFERENCE_BUCKET,
+      url: null,
+      label,
+      is_reference: true,
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    // Best-effort cleanup so a failed DB insert doesn't leave orphaned bytes.
+    await supabase.storage.from(REFERENCE_BUCKET).remove([path]);
+    throw new Error(insertError.message);
+  }
+
+  revalidatePath('/admin/products');
+  return row as ProductImage;
+}
+
+/** Delete a reference image row and its underlying storage object. */
+export async function deleteProductReferenceImage(imageId: string) {
+  await assertAdmin();
+  const supabase = await createServiceClient();
+
+  const { data: row, error: fetchError } = await supabase
+    .from('product_images')
+    .select('*')
+    .eq('id', imageId)
+    .single();
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!row) throw new Error('Reference image not found');
+
+  if (row.storage_path && row.storage_bucket) {
+    const { error: storageError } = await supabase.storage
+      .from(row.storage_bucket)
+      .remove([row.storage_path]);
+    if (storageError) {
+      console.error(
+        '[reference-images] storage delete failed, removing row anyway:',
+        storageError.message,
+      );
+    }
+  }
+
+  const { error: deleteError } = await supabase
+    .from('product_images')
+    .delete()
+    .eq('id', imageId);
+
+  if (deleteError) throw new Error(deleteError.message);
+
+  revalidatePath('/admin/products');
+}
+
+/** Rename (relabel) a reference image. */
+export async function updateProductReferenceImageLabel(
+  imageId: string,
+  label: string | null,
+) {
+  await assertAdmin();
+  const supabase = await createServiceClient();
+
+  const { error } = await supabase
+    .from('product_images')
+    .update({ label: label?.trim() || null })
+    .eq('id', imageId);
+
+  if (error) throw new Error(error.message);
   revalidatePath('/admin/products');
 }
