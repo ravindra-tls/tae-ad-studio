@@ -1,20 +1,43 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { getBrandConfig } from '@/lib/brand-config';
+import { getBrandConfigStrict } from '@/lib/brand-config';
 import { BrandConfigForm } from './brand-config-form';
 
 // Brand config changes are rare but admins expect the edit to reflect immediately.
 export const dynamic = 'force-dynamic';
 
 export default async function AdminBrandPage() {
-  const config = await getBrandConfig();
+  const result = await getBrandConfigStrict();
 
-  if (!config) {
+  if (!result.ok) {
+    const copy =
+      result.reason === 'table_missing'
+        ? {
+            title: 'brand_config table is missing',
+            body:
+              'Migration 008 has not been applied to this database. Run ' +
+              'supabase/run_v1_phase1_in_dashboard.sql in the Supabase SQL editor to create ' +
+              'the V1 Phase 1 tables (feature_flags, brand_config, product_images columns).',
+          }
+        : result.reason === 'row_missing'
+          ? {
+              title: 'brand_config row is missing',
+              body:
+                'The table exists but has no id=1 row. Re-run the seed section of ' +
+                'migration 008 (or the full dashboard bundle) — it uses ON CONFLICT DO NOTHING so ' +
+                'it is safe to apply twice.',
+            }
+          : {
+              title: 'Could not load brand config',
+              body: result.message,
+            };
+
     return (
       <div className="animate-fade-in">
         <h1 className="mb-6 text-2xl font-bold text-brand-teal">Brand Config</h1>
         <Card>
-          <CardContent className="p-6 text-sm text-red-600">
-            Brand config row is missing. Run migration 008 to seed id=1.
+          <CardContent className="p-6 text-sm text-red-700">
+            <p className="font-semibold">{copy.title}</p>
+            <p className="mt-2 text-red-700/80">{copy.body}</p>
           </CardContent>
         </Card>
       </div>
@@ -41,7 +64,7 @@ export default async function AdminBrandPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <BrandConfigForm config={config} />
+          <BrandConfigForm config={result.config} />
         </CardContent>
       </Card>
     </div>
