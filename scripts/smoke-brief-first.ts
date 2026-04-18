@@ -42,12 +42,18 @@ import { conceptStage } from '@/lib/pipeline/stages/concept';
 import { copyStage } from '@/lib/pipeline/stages/copy';
 import { visualStage } from '@/lib/pipeline/stages/visual';
 import {
+  critiqueStage,
+  refineCopyStage,
+  refineVisualStage,
+} from '@/lib/pipeline/stages/critique';
+import {
   BriefStructured as BriefStructuredSchema,
   type BriefStructured,
 } from '@/lib/pipeline/schemas/brief';
 import { ConceptStructured as ConceptStructuredSchema } from '@/lib/pipeline/schemas/concept';
 import { CopyStructured as CopyStructuredSchema } from '@/lib/pipeline/schemas/copy';
 import { VisualStructured as VisualStructuredSchema } from '@/lib/pipeline/schemas/visual';
+import { CritiqueStructured as CritiqueStructuredSchema } from '@/lib/pipeline/schemas/critique';
 import type { StageProgress } from '@/lib/pipeline/types';
 import type { BrandConfig, Product, Brief, Concept } from '@/types';
 
@@ -377,6 +383,154 @@ async function main() {
     console.warn(`⚠ Missing text_zones for copy elements: ${missing.join(', ')}`);
   } else {
     console.log(`✓ text_zones cover all present copy elements`);
+  }
+
+  // ── Stage 6: Critique (judge the bundle; maybe refine) ──────────────────
+  const t6 = Date.now();
+  let critiqueOut;
+  try {
+    critiqueOut = await critiqueStage.run(
+      {
+        brief: fakeBriefRow,
+        concept: fakeConceptRow,
+        copy: { structured: copy as unknown as Record<string, unknown> },
+        visual: { structured: visual as unknown as Record<string, unknown> },
+        product: FAKE_PRODUCT,
+        brand: FAKE_BRAND,
+      },
+      trace,
+    );
+  } catch (err) {
+    console.error(`\n✗ Critique stage threw: ${(err as Error).message}`);
+    process.exit(1);
+  }
+
+  const critiqueParse = CritiqueStructuredSchema.safeParse(critiqueOut.structured);
+  if (!critiqueParse.success) {
+    console.error(
+      `\n✗ Critique output failed schema validation: ${critiqueParse.error.message}`,
+    );
+    process.exit(1);
+  }
+  const critique = critiqueParse.data;
+
+  console.log(
+    `\n✓ Stage 6 Critique (${ms(t6)}) — verdict=${critique.verdict}, refine_targets=${critique.refine_targets.length}`,
+  );
+  log('critique.axes.brand',   `${critique.axes.brand.rating} — ${critique.axes.brand.note}`);
+  log('critique.axes.concept', `${critique.axes.concept.rating} — ${critique.axes.concept.note}`);
+  log('critique.axes.copy',    `${critique.axes.copy.rating} — ${critique.axes.copy.note}`);
+  log('critique.axes.visual',  `${critique.axes.visual.rating} — ${critique.axes.visual.note}`);
+  log('critique.summary',      critique.summary);
+
+  if (critique.refine_targets.length > 0) {
+    log(
+      'critique.refine_targets',
+      critique.refine_targets
+        .map((t) => `  ${t.stage}: ${t.instruction}`)
+        .join('\n'),
+    );
+  }
+
+  // Verdict invariants (same rules the stage normalizes to)
+  if (critique.verdict === 'pass' && critique.refine_targets.length > 0) {
+    console.warn('⚠ verdict=pass but refine_targets non-empty — stage should have cleared.');
+  }
+  if (critique.verdict === 'reject' && critique.refine_targets.length > 0) {
+    console.warn('⚠ verdict=reject but refine_targets non-empty — stage should have cleared.');
+  }
+
+  // ── Stage 7: Refine (bounded, one pass) ─────────────────────────────────
+  if (critique.verdict === 'refine' && critique.refine_targets.length > 0) {
+    const target = critique.refine_targets[0];
+    console.log(
+      `\n→ Running ONE refine pass on '${target.stage}': ${target.instruction}`,
+    );
+
+    const t7 = Date.now();
+    if (target.stage === 'copy') {
+      let refineOut;
+      try {
+        refineOut = await refineCopyStage.run(
+          {
+            brief: fakeBriefRow,
+            concept: fakeConceptRow,
+            product: FAKE_PRODUCT,
+            brand: FAKE_BRAND,
+            previous_copy: copy as unknown as Record<string, unknown>,
+            instruction: target.instruction,
+          },
+          trace,
+        );
+      } catch (err) {
+        console.error(`\n✗ Refine copy threw: ${(err as Error).message}`);
+        process.exit(1);
+      }
+
+      const rc = CopyStructuredSchema.safeParse(refineOut.structured);
+      if (!rc.success) {
+        console.error(`\n✗ Refined copy failed schema: ${rc.error.message}`);
+        process.exit(1);
+      }
+
+      console.log(`\n✓ Stage 7 Refined copy (${ms(t7)})`);
+      log('refined.headline (was)', `"${copy.headline.text}"`);
+      log('refined.headline (now)', `"${rc.data.headline.text}"  — ${rc.data.headline.rationale}`);
+      log('refined.body     (was)', copy.body);
+      log('refined.body     (now)', rc.data.body);
+
+      // Meaningful change: at least one of headline / subhead / body / cta
+      // should differ. If nothing moved, the refine pass didn't address the
+      // instruction.
+      const unchanged =
+        rc.data.headline.text === copy.headline.text &&
+        rc.data.subhead === copy.subhead &&
+        rc.data.body === copy.body &&
+        rc.data.cta === copy.cta;
+      if (unchanged) {
+        console.warn(
+          '⚠ Refined copy is identical to the original on all core fields — the refine pass did nothing.',
+        );
+      }
+    } else {
+      let refineOut;
+      try {
+        refineOut = await refineVisualStage.run(
+          {
+            brief: fakeBriefRow,
+            concept: fakeConceptRow,
+            copy: { structured: copy as unknown as Record<string, unknown> },
+            product: FAKE_PRODUCT,
+            brand: FAKE_BRAND,
+            previous_visual: visual as unknown as Record<string, unknown>,
+            instruction: target.instruction,
+            aspect_ratio: visual.aspect_ratio,
+          },
+          trace,
+        );
+      } catch (err) {
+        console.error(`\n✗ Refine visual threw: ${(err as Error).message}`);
+        process.exit(1);
+      }
+
+      const rv = VisualStructuredSchema.safeParse(refineOut.structured);
+      if (!rv.success) {
+        console.error(`\n✗ Refined visual failed schema: ${rv.error.message}`);
+        process.exit(1);
+      }
+
+      console.log(`\n✓ Stage 7 Refined visual (${ms(t7)})`);
+      log('refined.composition (was)', visual.composition);
+      log('refined.composition (now)', rv.data.composition);
+      log('refined.prompt_text (now)', rv.data.prompt_text);
+      if (rv.data.aspect_ratio !== visual.aspect_ratio) {
+        console.warn(
+          `⚠ Refined visual aspect_ratio drift: ${visual.aspect_ratio} → ${rv.data.aspect_ratio}. Stage overrides back to caller's value.`,
+        );
+      }
+    }
+  } else {
+    console.log(`\n(skipping refine — verdict=${critique.verdict})`);
   }
 
   // ── Trace summary (proves progress events are emitted) ───────────────────

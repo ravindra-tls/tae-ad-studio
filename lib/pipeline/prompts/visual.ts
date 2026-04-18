@@ -35,7 +35,7 @@ Return ONLY valid JSON matching this schema — no markdown, no prose:
   "composition": "string — rule of thirds, negative space, camera angle, product placement notes",
   "text_zones": [
     {
-      "element": "headline" | "subhead" | "cta" | "disclosure",
+      "element": "headline" | "subhead" | "body" | "cta" | "disclosure",
       "position": "top" | "top-left" | "top-right" | "center" | "bottom" | "bottom-left" | "bottom-right",
       "text": "string — the literal text that will sit here (copy from the copy_block)"
     }
@@ -84,13 +84,19 @@ CONTENT RULES:
 
 TEXT ZONES:
 
-- Emit a zone for every copy element that EXISTS in the copy_block. Do not
-  invent copy elements that aren't there.
+- Emit a zone ONLY when a copy element will actually be overlaid on the
+  image. Required zones: headline (always overlaid), cta (usually overlaid).
+- Subhead: zone it if present in the copy_block.
+- Body: zone it ONLY when the concept calls for body text on the image
+  (stat-led, social-proof, data-callout concepts). Otherwise body sits in
+  the feed caption and no zone is needed.
+- Disclosure: zone it only when present in the copy_block.
 - Position choice follows the concept's visual_direction + standard ad
   grammar (product hero → text at top; before/after → split with text
   bottom; lifestyle → text bottom-left over negative space).
 - The "text" field must literally match the copy_block's text for that
   element — do not rewrite the copy here.
+- Do NOT invent copy elements that aren't in the copy_block.
 
 NEGATIVE_PROMPTS (hard blocks for the image model):
 

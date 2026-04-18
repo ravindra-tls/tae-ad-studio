@@ -35,8 +35,13 @@ export type VisualStageInput = z.infer<typeof VisualStageInput>;
  * the rendering model interprets them.
  */
 export const TextZone = z.object({
-  /** Which copy element sits here. */
-  element: z.enum(['headline', 'subhead', 'cta', 'disclosure']),
+  /**
+   * Which copy element sits here. 'body' is included for layouts where the
+   * body copy is overlaid on the image (common in stat-led and
+   * social-proof concepts); otherwise body lives in the feed caption and
+   * no zone is needed for it.
+   */
+  element: z.enum(['headline', 'subhead', 'body', 'cta', 'disclosure']),
   /** Abstract position for the clear area. */
   position: z.enum([
     'top',

@@ -250,6 +250,25 @@ export interface VisualSpec {
   created_at: string;
 }
 
+/**
+ * Pipeline stage 6 output — adversarial critique of the assembled bundle.
+ * Verdict drives workflow: 'pass' ships, 'refine' triggers one bounded
+ * refinement pass on copy or visual, 'reject' surfaces to the marketer
+ * (no auto-refine in V1 — the concept itself is off).
+ */
+export interface Critique {
+  id: string;
+  concept_id: string;
+  brief_id: string;
+  copy_block_id: string | null;
+  visual_spec_id: string | null;
+  verdict: 'pass' | 'refine' | 'reject';
+  structured: Record<string, unknown>;
+  prompt_version: string | null;
+  model: string | null;
+  created_at: string;
+}
+
 export interface GeneratedImage {
   id: string;
   session_id: string;
