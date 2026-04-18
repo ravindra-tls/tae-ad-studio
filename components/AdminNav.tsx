@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Users, Package, CheckCircle, FileText, Settings, LayoutDashboard, MessageSquarePlus } from 'lucide-react';
+import { Users, Package, CheckCircle, FileText, Settings, LayoutDashboard, MessageSquarePlus, Flag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const adminLinks = [
@@ -12,6 +12,7 @@ const adminLinks = [
   { href: '/admin/approvals', label: 'Approvals', icon: CheckCircle },
   { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },
   { href: '/admin/templates', label: 'Templates', icon: FileText },
+  { href: '/admin/feature-flags', label: 'Feature Flags', icon: Flag },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 

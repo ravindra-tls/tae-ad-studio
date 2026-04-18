@@ -9,6 +9,16 @@ export interface Profile {
   created_at: string;
 }
 
+export interface FeatureFlag {
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  allowed_user_ids: string[];
+  rollout_percentage: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
 export interface ProductContext {
   // Colors (named + hex)
   primary_color?:    { name: string; hex: string };
