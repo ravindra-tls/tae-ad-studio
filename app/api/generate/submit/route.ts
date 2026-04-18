@@ -1,3 +1,14 @@
+/**
+ * POST /api/generate/submit
+ *
+ * V1 note (2026-04-18): this route hardcodes api_provider='xai' and
+ * model_id=XAI_MODEL_ID because xAI is the TEMPORARY image-gen bridge. The
+ * target is Vertex AI (Gemini 3 Pro Image) — switching means (a) flipping
+ * IMAGE_PROVIDER=vertex in env (handled by lib/image-providers/index.ts) and
+ * (b) sourcing api_provider + model_id from the provider object instead of
+ * hardcoding. Keeping it hardcoded for now to avoid silently migrating the
+ * historical generated_images rows that reference 'xai' as their provider.
+ */
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getGeneratedFileExtension, imageProvider } from '@/lib/image-providers';
 import { assemblePrompt } from '@/lib/prompt-assembler';
