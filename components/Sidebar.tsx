@@ -16,6 +16,8 @@ import {
   MessageSquarePlus,
   GalleryHorizontalEnd,
   BarChart3,
+  Palette,
+  Flag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +32,15 @@ const NAV = [
   { href: '/session/new',  label: 'New Session',  icon: Folders },
   { href: '/gallery',      label: 'Gallery',      icon: GalleryHorizontalEnd },
   { href: '/feedback',     label: 'Feedback',     icon: MessageSquarePlus },
+];
+
+const ADMIN_NAV = [
+  { href: '/admin/products',       label: 'Products',       icon: Package },
+  { href: '/admin/users',          label: 'Users',          icon: Users },
+  { href: '/admin/brand',          label: 'Brand Config',   icon: Palette },
+  { href: '/admin/feature-flags',  label: 'Feature Flags',  icon: Flag },
+  { href: '/admin/feedback',       label: 'Feedback',       icon: MessageSquarePlus },
+  { href: '/admin/stats',          label: 'Stats',          icon: BarChart3 },
 ];
 
 export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
@@ -177,12 +188,7 @@ export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
               {/* Admin sub-nav — shown expanded */}
               {!collapsed && (
                 <div className="ml-3 pl-3 border-l border-brand-wine/20 flex flex-col gap-0.5">
-                  {[
-                    { href: '/admin/products', label: 'Products', icon: Package },
-                    { href: '/admin/users',    label: 'Users',    icon: Users   },
-                    { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },
-                    { href: '/admin/stats',    label: 'Stats',    icon: BarChart3 },
-                  ].map(({ href, label, icon: Icon }) => {
+                  {ADMIN_NAV.map(({ href, label, icon: Icon }) => {
                     const active = pathname.startsWith(href);
                     return (
                       <Link
@@ -206,12 +212,7 @@ export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
               {/* Collapsed: icon-only sub-nav */}
               {collapsed && (
                 <>
-                  {[
-                    { href: '/admin/products', label: 'Products', icon: Package },
-                    { href: '/admin/users',    label: 'Users',    icon: Users   },
-                    { href: '/admin/feedback', label: 'Feedback', icon: MessageSquarePlus },
-                    { href: '/admin/stats',    label: 'Stats',    icon: BarChart3 },
-                  ].map(({ href, label, icon: Icon }) => (
+                  {ADMIN_NAV.map(({ href, label, icon: Icon }) => (
                     <Link
                       key={href}
                       href={href}
