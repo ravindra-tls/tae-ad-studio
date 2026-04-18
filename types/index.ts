@@ -179,6 +179,43 @@ export interface Session {
   product?: Product;
 }
 
+/**
+ * Pipeline stage 1 output. Produced by /api/pipeline/brief and edited/approved
+ * by the user at checkpoint 1. The `structured` column is the source of truth
+ * (schema-versioned); `audience` / `offer` / `hypothesis` are denormalized for
+ * cheap filtering and display.
+ */
+export interface Brief {
+  id: string;
+  session_id: string;
+  product_id: string;
+  objective: string | null;
+  audience: Record<string, unknown> | null;
+  offer: Record<string, unknown> | null;
+  hypothesis: string | null;
+  structured: Record<string, unknown> | null;
+  source: 'quiz' | 'freeform' | 'imported';
+  strictness: 'off' | 'loose' | 'tight';
+  wild_card: boolean;
+  approved_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Pipeline stage 2 output. 3-5 rows per brief, generated together and
+ * de-duplicated via the sameness detector. User picks 1-2 at checkpoint 2.
+ */
+export interface Concept {
+  id: string;
+  brief_id: string;
+  title: string;
+  hook_archetype: string | null;
+  description: string | null;
+  structured: Record<string, unknown> | null;
+  selected_at: string | null;
+  created_at: string;
+}
+
 export interface GeneratedImage {
   id: string;
   session_id: string;
