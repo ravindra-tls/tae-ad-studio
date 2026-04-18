@@ -216,6 +216,22 @@ export interface Concept {
   created_at: string;
 }
 
+/**
+ * Pipeline stage 3 output. One row per "this concept, in this run" — we
+ * don't enforce uniqueness on concept_id, since a marketer may re-run copy.
+ * The latest row by created_at is the "current" copy for a concept unless
+ * filtered otherwise.
+ */
+export interface CopyBlock {
+  id: string;
+  concept_id: string;
+  brief_id: string;
+  structured: Record<string, unknown>;
+  prompt_version: string | null;
+  model: string | null;
+  created_at: string;
+}
+
 export interface GeneratedImage {
   id: string;
   session_id: string;

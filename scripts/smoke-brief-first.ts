@@ -39,13 +39,15 @@ if (!process.env.ANTHROPIC_API_KEY) {
 // but being explicit about ordering keeps debugging obvious.
 import { briefStage } from '@/lib/pipeline/stages/brief';
 import { conceptStage } from '@/lib/pipeline/stages/concept';
+import { copyStage } from '@/lib/pipeline/stages/copy';
 import {
   BriefStructured as BriefStructuredSchema,
   type BriefStructured,
 } from '@/lib/pipeline/schemas/brief';
 import { ConceptStructured as ConceptStructuredSchema } from '@/lib/pipeline/schemas/concept';
+import { CopyStructured as CopyStructuredSchema } from '@/lib/pipeline/schemas/copy';
 import type { StageProgress } from '@/lib/pipeline/types';
-import type { BrandConfig, Product, Brief } from '@/types';
+import type { BrandConfig, Product, Brief, Concept } from '@/types';
 
 // ── Fake product (shape must match `products` row — no insert happens) ──────
 const FAKE_PRODUCT: Product = {
@@ -245,6 +247,67 @@ async function main() {
     if (round.regenerate.length > 0) {
       console.log(`    → merged regen list: #${round.regenerate.map((r) => r.index).join(', #')}`);
     }
+  }
+
+  // ── Stage 3: Copy (run on first concept — parity with "user selected one") ─
+  const fakeConceptRow: Concept = {
+    id: 'smoke-concept-00000000-0000-0000-0000-000000000000',
+    brief_id: fakeBriefRow.id,
+    title: conceptOut.concepts[0].title,
+    hook_archetype: conceptOut.concepts[0].hook_archetype,
+    description: conceptOut.concepts[0].description,
+    structured: conceptOut.concepts[0] as unknown as Record<string, unknown>,
+    selected_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  };
+
+  const t3 = Date.now();
+  let copyOut;
+  try {
+    copyOut = await copyStage.run(
+      {
+        brief: fakeBriefRow,
+        concept: fakeConceptRow,
+        product: FAKE_PRODUCT,
+        brand: FAKE_BRAND,
+        alternates: 3,
+      },
+      trace,
+    );
+  } catch (err) {
+    console.error(`\n✗ Copy stage threw: ${(err as Error).message}`);
+    process.exit(1);
+  }
+
+  const copyParse = CopyStructuredSchema.safeParse(copyOut.structured);
+  if (!copyParse.success) {
+    console.error(
+      `\n✗ Copy output failed schema validation: ${copyParse.error.message}`,
+    );
+    process.exit(1);
+  }
+  const copy = copyParse.data;
+
+  console.log(
+    `\n✓ Stage 3 Copy (${ms(t3)}) — for concept [${fakeConceptRow.hook_archetype}] "${fakeConceptRow.title}"`,
+  );
+  log('copy.headline',            `"${copy.headline.text}"  — ${copy.headline.rationale}`);
+  if (copy.headline_alternates.length > 0) {
+    log(
+      `copy.headline_alternates (${copy.headline_alternates.length})`,
+      copy.headline_alternates.map((h, i) => `  ${i + 1}. "${h.text}"  — ${h.rationale}`).join('\n'),
+    );
+  }
+  log('copy.subhead',              copy.subhead ?? '(null)');
+  log('copy.body',                 copy.body);
+  log('copy.cta',                  copy.cta);
+  log('copy.disclosure',           copy.disclosure ?? '(null)');
+  log('copy.leaning_on',           copy.leaning_on);
+
+  // Headline sanity — ≤ 10 words per prompt. Warn, don't fail.
+  const headlineWords = copy.headline.text.trim().split(/\s+/).length;
+  if (headlineWords > 10) {
+    console.warn(`⚠ Headline is ${headlineWords} words — prompt asks for ≤ 10.`);
   }
 
   // ── Trace summary (proves progress events are emitted) ───────────────────
