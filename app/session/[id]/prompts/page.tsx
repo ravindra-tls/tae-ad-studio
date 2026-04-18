@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { PromptWorkspace } from './prompt-workspace';
 import { resolveReferenceImages } from '@/lib/storage/reference-images';
+import { isEnabled } from '@/lib/feature-flags';
 import type { ProductImage } from '@/types';
 
 export default async function PromptsPage({ params }: { params: { id: string } }) {
@@ -47,6 +48,11 @@ export default async function PromptsPage({ params }: { params: { id: string } }
     url: r.resolved_url,
   }));
 
+  // Feature flag: when `brief_first_ui` is on for this user, surface a link to
+  // the new brief-first entry point alongside the existing template grid. Both
+  // remain visible — the flag controls discovery, not removal.
+  const briefFirstEnabled = await isEnabled('brief_first_ui', user.id);
+
   return (
     <PromptWorkspace
       session={session}
@@ -54,6 +60,7 @@ export default async function PromptsPage({ params }: { params: { id: string } }
       templates={templates || []}
       referenceImages={referenceImages}
       remainingCredits={Math.max(0, (profile?.usage_cap || 30) - (profile?.usage_count || 0))}
+      briefFirstEnabled={briefFirstEnabled}
     />
   );
 }

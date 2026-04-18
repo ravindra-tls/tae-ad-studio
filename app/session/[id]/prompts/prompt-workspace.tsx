@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Pencil, X, Check, RefreshCcw, AlertTriangle, ImagePlus, Trash2 } from 'lucide-react';
+import { Sparkles, Pencil, X, Check, RefreshCcw, AlertTriangle, ImagePlus, Trash2, Lightbulb } from 'lucide-react';
 import Link from 'next/link';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,12 @@ interface PromptWorkspaceProps {
   templates: PromptTemplate[];
   referenceImages: ProductImage[];
   remainingCredits: number;
+  /**
+   * When true, the `brief_first_ui` flag is on for this user and we surface a
+   * link to the new brief-first workspace alongside the template grid. Both
+   * entry points remain visible; the flag only controls discovery.
+   */
+  briefFirstEnabled?: boolean;
 }
 
 const CATEGORIES = [
@@ -47,6 +53,7 @@ export function PromptWorkspace({
   templates,
   referenceImages,
   remainingCredits,
+  briefFirstEnabled = false,
 }: PromptWorkspaceProps) {
   const [selectedIds, setSelectedIds]       = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -351,6 +358,16 @@ export function PromptWorkspace({
         ]}
         actions={
           <>
+            {briefFirstEnabled && (
+              <Link
+                href={`/session/${session.id}/brief`}
+                className="filter-pill flex items-center gap-1.5 rounded-md border border-brand-gold/40 bg-brand-gold/5 px-2.5 py-1 text-brand-gold hover:bg-brand-gold/10 hover:border-brand-gold"
+                title="New: start from an objective instead of a template"
+              >
+                <Lightbulb className="h-3 w-3" />
+                Start from a brief
+              </Link>
+            )}
             <Link
               href="/session/new"
               className="filter-pill flex items-center gap-1.5 rounded-md border border-brand-sage/30 bg-white px-2.5 py-1 text-brand-slate hover:border-brand-forest/40 hover:text-brand-forest hover:bg-brand-cream"
