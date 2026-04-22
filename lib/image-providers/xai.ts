@@ -51,8 +51,17 @@ export function getGeneratedFileExtension(_mimeType: string): string {
 
 /**
  * Build the request body for the /edits endpoint. xAI accepts either a
- * singular `image` (single reference) or an `images` array (up to 5).
- * We honor both shapes literally because the docs do.
+ * singular `image` (single reference) or an `images` array (up to 5 for
+ * multi-reference editing). Ref: https://docs.x.ai/developers/rest-api-reference/inference/images
+ *
+ * The body shape is literally `{ url: "..." }` per the docs — NOT the
+ * OpenAI chat-message `{ type: "image_url", url: "..." }` shape. We made that
+ * mistake once; xAI returns a plain-text "Failed to..." error when the shape
+ * is wrong, which blows up JSON.parse downstream.
+ *
+ * For multi-reference, the docs say refer to images as `<IMAGE_0>`, `<IMAGE_1>`
+ * etc. in the prompt. Our callers today pass a single brand reference, so we
+ * don't rewrite the prompt — noting it here so future multi-ref work knows.
  */
 function buildEditsBody(params: {
   modelId: string;
@@ -69,9 +78,9 @@ function buildEditsBody(params: {
   };
 
   if (params.refs.length === 1) {
-    base.image = { type: 'image_url', url: params.refs[0] };
+    base.image = { url: params.refs[0] };
   } else {
-    base.images = params.refs.map((url) => ({ type: 'image_url', url }));
+    base.images = params.refs.map((url) => ({ url }));
   }
 
   return base;
@@ -139,19 +148,40 @@ export const xai: ImageProvider = {
       body: JSON.stringify(body),
     });
 
-    const payload = await response.json();
+    // xAI sometimes returns plain-text error bodies (e.g. "Failed to fetch
+    // image from URL...") for /edits when a reference URL is unreachable or
+    // the body shape is off. If we blindly call response.json() on those, the
+    // SyntaxError ("Unexpected token 'F'...") leaks out as the user-facing
+    // error and buries the actual cause. So: read as text first, try JSON,
+    // fall back to the raw text for the error path.
+    const rawBody = await response.text();
+    let payload: any = null;
+    try {
+      payload = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      payload = null;
+    }
 
     if (!response.ok) {
       const message =
         payload?.error?.message ||
-        payload?.error ||
+        (typeof payload?.error === 'string' ? payload.error : null) ||
+        (rawBody && rawBody.length < 500 ? rawBody : null) ||
         `xAI image ${hasRefs ? 'edit' : 'generation'} failed (HTTP ${response.status})`;
       console.error(
         `[xAI] API error (${hasRefs ? 'edits' : 'generations'}):`,
         response.status,
-        JSON.stringify(payload),
+        rawBody.slice(0, 1000),
       );
       throw new Error(message);
+    }
+
+    if (!payload) {
+      console.error(
+        `[xAI] 2xx response was not valid JSON (${hasRefs ? 'edits' : 'generations'}):`,
+        rawBody.slice(0, 500),
+      );
+      throw new Error('xAI returned a non-JSON response body');
     }
 
     console.log(
