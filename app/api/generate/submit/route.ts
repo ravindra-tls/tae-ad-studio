@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
   if (profile.usage_count >= profile.usage_cap) {
     return NextResponse.json(
-      { error: 'Monthly generation limit reached.', used: profile.usage_count, cap: profile.usage_cap },
+      { error: 'Weekly generation limit reached.', used: profile.usage_count, cap: profile.usage_cap },
       { status: 429 }
     );
   }

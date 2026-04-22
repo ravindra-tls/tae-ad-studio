@@ -32,8 +32,8 @@ export function UserActions({ user }: UserActionsProps) {
         disabled={loading}
         className="rounded border border-brand-teal/20 px-2 py-1 text-xs"
       >
-        {[10, 20, 30, 40, 50, 100].map((cap) => (
-          <option key={cap} value={cap}>{cap}/mo</option>
+        {[30, 50, 100, 200, 500].map((cap) => (
+          <option key={cap} value={cap}>{cap}/wk</option>
         ))}
       </select>
       <Button

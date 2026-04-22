@@ -34,7 +34,7 @@ export function UsageMeter({ used, cap, daysUntilReset, compact = false }: Usage
   return (
     <div className="rounded-lg border border-brand-teal/10 bg-white p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-brand-teal">Monthly Usage</span>
+        <span className="text-sm font-medium text-brand-teal">Weekly Usage</span>
         <span className={cn('text-sm font-bold', isExhausted ? 'text-brand-wine' : 'text-brand-teal')}>
           {remaining} remaining
         </span>

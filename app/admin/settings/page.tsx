@@ -57,11 +57,11 @@ export default function AdminSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Default Usage Cap</CardTitle>
-            <CardDescription>New users receive this many image generations per month</CardDescription>
+            <CardDescription>New users receive this many image generations per week</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-brand-teal">
-              {process.env.DEFAULT_USAGE_CAP || '30'} <span className="text-sm font-normal text-gray-400">images/month</span>
+              {process.env.DEFAULT_USAGE_CAP || '30'} <span className="text-sm font-normal text-gray-400">images/week</span>
             </p>
           </CardContent>
         </Card>
