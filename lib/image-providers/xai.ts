@@ -34,6 +34,48 @@ const ASPECT_RATIO_HINT: Record<string, string> = {
   '3:4':  'portrait format (3:4 aspect ratio)',
 };
 
+/**
+ * xAI's /edits endpoint only accepts a fixed enum of aspect_ratio values.
+ * Our app exposes `4:5` (Instagram feed portrait) which xAI does NOT support
+ * — so we substitute the closest supported ratio and steer the composition
+ * via a prompt hint for the missing fraction.
+ *
+ * Supported by xAI (per docs, April 2026):
+ *   1:1, 3:4, 4:3, 9:16, 16:9, 2:3, 3:2, 9:19.5, 19.5:9, 9:20, 20:9, 1:2, 2:1, auto
+ *
+ * Mapping rationale:
+ *   4:5 (=0.80) → 3:4 (=0.75) is the closest supported ratio (Δ 0.05).
+ *                 2:3 (=0.667) was the other candidate but is further off.
+ */
+const XAI_EDITS_SUPPORTED_RATIOS = new Set([
+  '1:1', '3:4', '4:3', '9:16', '16:9', '2:3', '3:2',
+  '9:19.5', '19.5:9', '9:20', '20:9', '1:2', '2:1', 'auto',
+]);
+
+const XAI_EDITS_RATIO_SUBSTITUTE: Record<string, { ratio: string; note: string }> = {
+  '4:5': {
+    ratio: '3:4',
+    note: 'Frame the composition to work as a 4:5 Instagram feed crop (top ~6% and bottom ~6% of the 3:4 canvas should be safe margin).',
+  },
+};
+
+function resolveEditsAspectRatio(requested: string): { ratio: string; promptAddendum: string | null } {
+  if (XAI_EDITS_SUPPORTED_RATIOS.has(requested)) {
+    return { ratio: requested, promptAddendum: null };
+  }
+  const sub = XAI_EDITS_RATIO_SUBSTITUTE[requested];
+  if (sub) {
+    console.warn(
+      `[xAI] /edits does not support aspect_ratio="${requested}"; substituting "${sub.ratio}" with a composition hint.`,
+    );
+    return { ratio: sub.ratio, promptAddendum: sub.note };
+  }
+  console.warn(
+    `[xAI] /edits got unknown aspect_ratio="${requested}"; falling back to "1:1".`,
+  );
+  return { ratio: '1:1', promptAddendum: null };
+}
+
 function getApiKey(): string {
   const key = process.env.XAI_API_KEY;
   if (!key) throw new Error('xAI API key is not configured. Set XAI_API_KEY.');
@@ -69,12 +111,17 @@ function buildEditsBody(params: {
   aspectRatio: GenerateParams['aspectRatio'];
   refs: string[];
 }): Record<string, unknown> {
+  const { ratio, promptAddendum } = resolveEditsAspectRatio(params.aspectRatio);
+  const finalPrompt = promptAddendum
+    ? `${params.prompt}\n\n${promptAddendum}`
+    : params.prompt;
+
   const base: Record<string, unknown> = {
     model:           params.modelId,
-    prompt:          params.prompt,
+    prompt:          finalPrompt,
     n:               1,
     response_format: 'b64_json',
-    aspect_ratio:    params.aspectRatio,
+    aspect_ratio:    ratio,
   };
 
   if (params.refs.length === 1) {
