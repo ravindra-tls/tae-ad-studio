@@ -3,6 +3,13 @@ export interface GenerateParams {
   referenceImageUrls?: string[];
   aspectRatio: '1:1' | '4:5' | '9:16' | '16:9' | '3:4';
   modelId?: string;
+  /**
+   * Optional hard-block list. Not all providers support a native
+   * negative_prompt field (xAI does not), so the provider is responsible for
+   * folding this into the prompt text as "Avoid: a, b, c." Callers should
+   * pass an already-joined string (comma-separated is conventional).
+   */
+  negativePrompt?: string;
 }
 
 export interface GeneratedAsset {

@@ -18,6 +18,12 @@ export interface RenderInput {
   aspectRatio: GenerateParams['aspectRatio'];
   referenceImageUrls?: string[];
   modelId?: string;
+  /**
+   * Visual stage emits hard-blocks in `visual_specs.structured.negative_prompts`;
+   * the orchestrator joins them into a single string and passes through here.
+   * Provider folds this into the prompt text (xAI has no native field for it).
+   */
+  negativePrompt?: string;
 }
 
 export type RenderOutput = GenerateResult;
@@ -35,6 +41,7 @@ export const renderStage: Stage<RenderInput, RenderOutput> = {
         aspectRatio: input.aspectRatio,
         referenceImageUrls: input.referenceImageUrls,
         modelId: input.modelId,
+        negativePrompt: input.negativePrompt,
       });
 
       trace.push({

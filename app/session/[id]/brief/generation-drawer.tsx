@@ -38,6 +38,7 @@ import {
   type AspectRatio,
   type StageName,
   type GenerationMeta,
+  type RenderRequestSnapshot,
 } from '@/lib/hooks/use-generation-stream';
 import type { Concept } from '@/types';
 
@@ -51,9 +52,11 @@ interface RunResult {
 interface GenerationDrawerProps {
   open: boolean;
   onClose: () => void;
-  /** Concepts queued to run (1-2 rows). Order is the run order. */
+  /** Concepts queued to run. Order is the run order. */
   concepts: Concept[];
   aspectRatio: AspectRatio;
+  /** Pass-through to orchestrator — see AspectRatioPicker sibling toggle. */
+  useReferences: boolean;
   sessionId: string;
 }
 
@@ -78,6 +81,7 @@ export function GenerationDrawer({
   onClose,
   concepts,
   aspectRatio,
+  useReferences,
   sessionId,
 }: GenerationDrawerProps) {
   // activeIndex walks through concepts sequentially. -1 = not started yet.
@@ -118,9 +122,10 @@ export function GenerationDrawer({
       aspect_ratio: aspectRatio,
       alternates: 3,
       auto_refine: true,
+      use_references: useReferences,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, activeIndex, concepts]);
+  }, [open, activeIndex, concepts, useReferences]);
 
   // When the current run terminates, capture its result and either advance
   // to the next concept or stop.
@@ -248,6 +253,18 @@ export function GenerationDrawer({
                   durationMs={s.durationMs}
                   error={s.error}
                 />
+              ))}
+            </div>
+          )}
+
+          {/* Image-provider call diagnostics — one block per render pass. */}
+          {state.renderRequests.length > 0 && (
+            <div className="mt-5 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-brand-slate">
+                Sent to image model
+              </h3>
+              {state.renderRequests.map((req, i) => (
+                <RenderRequestCard key={i} request={req} />
               ))}
             </div>
           )}
@@ -385,6 +402,89 @@ function StageRow({
           <p className="mt-1 text-xs text-brand-wine">{error}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Diagnostic card that shows, in one block, the exact inputs we handed to
+ * the image provider on a given pass: endpoint chosen, final prompt (with
+ * aspect-ratio hint and negatives already folded in on the server side —
+ * this view renders the raw visual_specs.prompt_text plus the negatives
+ * separately so the marketer can see what each piece contributes), ref
+ * images if any, and aspect ratio.
+ *
+ * We deliberately show the negatives on their own line rather than
+ * re-concatenating with "Avoid: …" — the drawer is a debugging surface
+ * and separating the pieces reads more clearly than a wall of prose.
+ */
+function RenderRequestCard({ request }: { request: RenderRequestSnapshot }) {
+  const endpointLabel =
+    request.endpoint === 'edits' ? 'xAI /edits' : 'xAI /generations';
+  return (
+    <div className="rounded-md border border-brand-teal/15 bg-white p-3 text-xs">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline" className="border-brand-teal/30 text-brand-teal">
+          {request.pass === 'initial' ? 'Initial render' : 'Refine re-render'}
+        </Badge>
+        <Badge variant="outline" className="border-brand-slate/30 text-brand-slate">
+          {endpointLabel}
+        </Badge>
+        <Badge variant="outline" className="border-brand-slate/30 text-brand-slate">
+          {request.aspect_ratio}
+        </Badge>
+        <Badge variant="outline" className="border-brand-slate/30 text-brand-slate">
+          {request.reference_image_urls.length} ref
+          {request.reference_image_urls.length === 1 ? '' : 's'}
+        </Badge>
+      </div>
+
+      <div className="mt-2">
+        <div className="text-[10px] uppercase tracking-wide text-brand-slate">
+          Prompt
+        </div>
+        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-brand-cream/50 p-2 font-mono text-[11px] leading-snug text-brand-navy">
+          {request.prompt}
+        </pre>
+      </div>
+
+      {request.negative_prompt && (
+        <div className="mt-2">
+          <div className="text-[10px] uppercase tracking-wide text-brand-slate">
+            Negatives (appended as &quot;Avoid: …&quot;)
+          </div>
+          <p className="mt-1 rounded bg-brand-wine/5 p-2 font-mono text-[11px] leading-snug text-brand-wine/90">
+            {request.negative_prompt}
+          </p>
+        </div>
+      )}
+
+      {request.reference_image_urls.length > 0 && (
+        <div className="mt-2">
+          <div className="text-[10px] uppercase tracking-wide text-brand-slate">
+            Reference images
+          </div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {request.reference_image_urls.map((url, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+                title={`Reference ${i + 1} (opens in new tab)`}
+              >
+                <img
+                  src={url}
+                  alt={`Reference ${i + 1}`}
+                  className="h-14 w-14 rounded border border-brand-teal/15 object-cover"
+                />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

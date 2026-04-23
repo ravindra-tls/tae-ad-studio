@@ -38,8 +38,6 @@ interface ConceptStructured {
   };
 }
 
-const MAX_SELECTIONS = 2;
-
 interface ConceptGalleryProps {
   concepts: Concept[];
   samenessRounds: SamenessRound[];
@@ -68,7 +66,6 @@ export function ConceptGallery({
   const [selectError, setSelectError] = useState<string | null>(null);
 
   const selectedCount = concepts.filter((c) => c.selected_at !== null).length;
-  const atCap = selectedCount >= MAX_SELECTIONS;
   const selectionEnabled = Boolean(onToggleSelect);
 
   async function handleToggle(c: Concept, next: boolean) {
@@ -115,7 +112,7 @@ export function ConceptGallery({
                   : 'border-brand-slate/30 text-brand-slate'
               }
             >
-              {selectedCount} / {MAX_SELECTIONS} selected
+              {selectedCount} selected
             </Badge>
           )}
         </div>
@@ -135,10 +132,7 @@ export function ConceptGallery({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {concepts.map((c, i) => {
           const isSelected = c.selected_at !== null;
-          const disabled =
-            !selectionEnabled ||
-            pendingId === c.id ||
-            (atCap && !isSelected); // can only deselect once at cap
+          const disabled = !selectionEnabled || pendingId === c.id;
           return (
             <ConceptCard
               key={c.id}
@@ -158,9 +152,9 @@ export function ConceptGallery({
         <div className="flex items-center justify-between gap-3 mt-4 rounded-md border border-brand-cream bg-brand-cream/40 px-4 py-3">
           <p className="text-xs text-brand-slate">
             {selectedCount === 0
-              ? `Pick up to ${MAX_SELECTIONS} concepts to advance to copy + visuals.`
+              ? `Pick one or more concepts to advance to copy + visuals.`
               : selectedCount === 1
-                ? `1 concept selected. Add one more or continue.`
+                ? `1 concept selected — ready to continue (or pick more).`
                 : `${selectedCount} concepts selected — ready to continue.`}
           </p>
           <Button

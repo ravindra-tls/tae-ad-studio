@@ -84,6 +84,15 @@ const RequestBody = z.object({
   alternates: z.number().int().min(0).max(5).optional(),
   judge_notes: z.string().max(2000).optional(),
   auto_refine: z.boolean().optional(),
+  /**
+   * Whether to ship reference product images to the image model. Defaults
+   * to false because the /edits endpoint (the only xAI route that accepts
+   * refs) produces degraded composition — it tries too hard to reproduce
+   * the reference at full frame. Pure text-to-image via /generations is
+   * the cleaner default; marketers can opt in when they want the product
+   * likeness preserved.
+   */
+  use_references: z.boolean().optional(),
 });
 
 /**
@@ -96,6 +105,22 @@ type WireEvent =
   | { type: 'stage_start'; stage: string; at: number }
   | { type: 'stage_complete'; stage: string; durationMs: number; output: Record<string, unknown> }
   | { type: 'stage_error'; stage: string; error: string }
+  /**
+   * Emitted right before each render call so the thinking drawer can show
+   * the marketer exactly what we're about to send to the image provider —
+   * final prompt text, which endpoint (edits vs generations), reference
+   * image URLs if any, and the negatives being appended. Purely for
+   * diagnostics; not persisted.
+   */
+  | {
+      type: 'render_request';
+      pass: 'initial' | 'refine';
+      endpoint: 'edits' | 'generations';
+      prompt: string;
+      negative_prompt: string | null;
+      aspect_ratio: AspectRatio;
+      reference_image_urls: string[];
+    }
   | { type: 'done'; status: 'completed' | 'failed'; generated_image_id?: string; image_url?: string; trace: StageProgress[]; error?: string };
 
 /** SSE frame encoder. Each event is a single `data:` line followed by blank line. */
@@ -130,6 +155,7 @@ export async function POST(request: Request) {
 
   const autoRefine = parsed.auto_refine ?? true;
   const aspectRatio = parsed.aspect_ratio as AspectRatio;
+  const useReferences = parsed.use_references ?? false;
 
   // ── Usage cap check up front ─────────────────────────────────────────────
   // If the user is already at/over cap we refuse BEFORE opening the stream.
@@ -221,7 +247,12 @@ export async function POST(request: Request) {
   const resolvedRefs = await resolveReferenceImages(
     (refImageRows || []) as ProductImage[],
   );
-  const referenceImageUrls = resolvedRefs.map((r) => r.resolved_url);
+  // We mint signed URLs unconditionally (it's idempotent and cheap) but only
+  // ship them downstream if the caller opted in via `use_references`. This
+  // keeps the default path on xAI /generations, which produces stronger
+  // composition than /edits for ads.
+  const allReferenceImageUrls = resolvedRefs.map((r) => r.resolved_url);
+  const referenceImageUrls = useReferences ? allReferenceImageUrls : [];
 
   // ── Open the SSE stream ──────────────────────────────────────────────────
   const runId = randomUUID();
@@ -258,6 +289,21 @@ export async function POST(request: Request) {
           emit({ type: 'stage_error', stage: stageName, error: msg });
           throw err;
         }
+      }
+
+      /**
+       * Pull the hard-block list out of a visual spec row. Claude emits these
+       * under `structured.negative_prompts`; we join them into one comma-
+       * separated string that the provider folds into the final prompt.
+       */
+      function negativePromptFrom(structured: unknown): string | undefined {
+        if (!structured || typeof structured !== 'object') return undefined;
+        const raw = (structured as Record<string, unknown>).negative_prompts;
+        if (!Array.isArray(raw)) return undefined;
+        const items = raw
+          .map((x) => (typeof x === 'string' ? x.trim() : ''))
+          .filter((x) => x.length > 0);
+        return items.length > 0 ? items.join(', ') : undefined;
       }
 
       emit({
@@ -401,6 +447,17 @@ export async function POST(request: Request) {
           );
         }
 
+        const initialNegativePrompt = negativePromptFrom(visualRow.structured);
+        emit({
+          type: 'render_request',
+          pass: 'initial',
+          endpoint: referenceImageUrls.length > 0 ? 'edits' : 'generations',
+          prompt: visualRow.prompt_text,
+          negative_prompt: initialNegativePrompt ?? null,
+          aspect_ratio: aspectRatio,
+          reference_image_urls: referenceImageUrls,
+        });
+
         const renderResult = await runStage(
           'render',
           () =>
@@ -410,6 +467,7 @@ export async function POST(request: Request) {
                 aspectRatio,
                 referenceImageUrls,
                 modelId,
+                negativePrompt: initialNegativePrompt,
               },
               trace,
             ),
@@ -695,6 +753,20 @@ export async function POST(request: Request) {
                 });
               } else {
                 try {
+                  const refineNegativePrompt = negativePromptFrom(
+                    newVisualRow.structured,
+                  );
+                  emit({
+                    type: 'render_request',
+                    pass: 'refine',
+                    endpoint:
+                      referenceImageUrls.length > 0 ? 'edits' : 'generations',
+                    prompt: newVisualRow.prompt_text,
+                    negative_prompt: refineNegativePrompt ?? null,
+                    aspect_ratio: aspectRatio,
+                    reference_image_urls: referenceImageUrls,
+                  });
+
                   const reRender = await runStage(
                     'render',
                     () =>
@@ -704,6 +776,7 @@ export async function POST(request: Request) {
                           aspectRatio,
                           referenceImageUrls,
                           modelId,
+                          negativePrompt: refineNegativePrompt,
                         },
                         trace,
                       ),

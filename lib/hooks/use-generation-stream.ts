@@ -35,6 +35,26 @@ export interface GenerateRequestBody {
   alternates?: number;
   judge_notes?: string;
   auto_refine?: boolean;
+  /**
+   * Opt-in: ship reference product images to the image model. Defaults
+   * server-side to false. Currently this flips xAI from /generations to
+   * /edits, which is stronger on product likeness but weaker on composition.
+   */
+  use_references?: boolean;
+}
+
+/**
+ * Mirror of the server's `render_request` event. Emitted right before each
+ * image-provider call so the drawer can show the marketer exactly what
+ * we're about to send. Captured by the hook per pass and exposed on state.
+ */
+export interface RenderRequestSnapshot {
+  pass: 'initial' | 'refine';
+  endpoint: 'edits' | 'generations';
+  prompt: string;
+  negative_prompt: string | null;
+  aspect_ratio: AspectRatio;
+  reference_image_urls: string[];
 }
 
 export type StageName = 'copy' | 'visual' | 'render' | 'critique' | 'refine';
@@ -67,6 +87,12 @@ export interface GenerationStreamState {
   error?: string;
   /** The concept_id currently being generated, if streaming. */
   activeConceptId?: string;
+  /**
+   * Diagnostic log of every image-provider call made in this run. The drawer
+   * renders these so the marketer can see the final prompt + refs we sent.
+   * Ordered: [0] = initial render, [1+] = refine re-renders (at most 1 today).
+   */
+  renderRequests: RenderRequestSnapshot[];
 }
 
 /** Default ordered stage skeleton. Refine slots stay pending unless used. */
@@ -115,6 +141,7 @@ export function useGenerationStream() {
     status: 'idle',
     stages: INITIAL_STAGES.map((s) => ({ ...s })),
     meta: {},
+    renderRequests: [],
   });
 
   const abortRef = useRef<AbortController | null>(null);
@@ -124,6 +151,7 @@ export function useGenerationStream() {
       status: 'idle',
       stages: INITIAL_STAGES.map((s) => ({ ...s })),
       meta: {},
+      renderRequests: [],
     });
   }, []);
 
@@ -147,6 +175,7 @@ export function useGenerationStream() {
       status: 'streaming',
       stages: INITIAL_STAGES.map((s) => ({ ...s })),
       meta: {},
+      renderRequests: [],
       activeConceptId: body.concept_id,
     });
 
@@ -242,6 +271,21 @@ function applyEvent(
   switch (type) {
     case 'pipeline_start': {
       return prev; // already reset in start()
+    }
+
+    case 'render_request': {
+      const snap: RenderRequestSnapshot = {
+        pass: event.pass as RenderRequestSnapshot['pass'],
+        endpoint: event.endpoint as RenderRequestSnapshot['endpoint'],
+        prompt: String(event.prompt ?? ''),
+        negative_prompt:
+          typeof event.negative_prompt === 'string' ? event.negative_prompt : null,
+        aspect_ratio: event.aspect_ratio as AspectRatio,
+        reference_image_urls: Array.isArray(event.reference_image_urls)
+          ? (event.reference_image_urls as string[])
+          : [],
+      };
+      return { ...prev, renderRequests: [...prev.renderRequests, snap] };
     }
 
     case 'stage_start': {

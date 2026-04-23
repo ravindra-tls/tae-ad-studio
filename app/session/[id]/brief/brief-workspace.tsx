@@ -57,6 +57,11 @@ export function BriefWorkspace({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerConceptIds, setDrawerConceptIds] = useState<string[]>([]);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+  // Reference-image opt-in. Defaults OFF because xAI /edits (the only route
+  // that consumes refs) sacrifices composition quality for product likeness —
+  // not what marketers want for on-feed ads. On-switch: useful when the ad
+  // concept hinges on an exact SKU or packaging render.
+  const [useReferences, setUseReferences] = useState(false);
 
   // Resolve the ID list to full Concept rows in declared order. Memoized so
   // the drawer's effect dependency on `concepts` stays stable until selection
@@ -148,8 +153,7 @@ export function BriefWorkspace({
 
   /**
    * Toggle a concept's selection via PATCH /api/pipeline/concept/[id]/select.
-   * Throws on non-200 so ConceptGallery can show an inline error (e.g. the
-   * 409 from the max-2 selection cap).
+   * Throws on non-200 so ConceptGallery can show an inline error.
    */
   async function handleToggleSelect(
     conceptId: string,
@@ -231,9 +235,12 @@ export function BriefWorkspace({
           />
         )}
 
-      {/* Aspect ratio picker — governs what size the generator hands to xAI. */}
+      {/* Aspect ratio + reference toggle — governs what size & inputs go to xAI. */}
       {phase === 'concepts_ready' && concepts.length > 0 && (
-        <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
+        <div className="mb-4 flex flex-wrap items-stretch gap-2">
+          <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
+          <ReferenceToggle value={useReferences} onChange={setUseReferences} />
+        </div>
       )}
 
       {/* Step 3: Concept gallery + sameness debug. */}
@@ -253,6 +260,7 @@ export function BriefWorkspace({
         onClose={() => setDrawerOpen(false)}
         concepts={drawerConcepts}
         aspectRatio={aspectRatio}
+        useReferences={useReferences}
         sessionId={session.id}
       />
     </div>
@@ -273,6 +281,53 @@ const ASPECT_OPTIONS: Array<{ value: AspectRatio; label: string; hint: string }>
   { value: '3:4', label: '3:4', hint: 'Portrait' },
 ];
 
+/**
+ * Two-state toggle for "ship reference product images to the image model".
+ * Compact pill pair to match the aspect-ratio picker's visual register. The
+ * ON state is deliberately labelled "With product photo" rather than
+ * "/edits endpoint" — the marketer shouldn't need to know which xAI route
+ * is chosen, only the trade-off (likeness vs. composition freedom).
+ */
+function ReferenceToggle({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-brand-teal/15 bg-white px-3 py-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-brand-slate">
+        Product photo
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        title="Pure text-to-image; stronger composition."
+        className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+          !value
+            ? 'bg-brand-teal text-white'
+            : 'bg-brand-cream/60 text-brand-forest hover:bg-brand-teal/10'
+        }`}
+      >
+        Off
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        title="Include product reference image; better likeness, weaker composition."
+        className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+          value
+            ? 'bg-brand-teal text-white'
+            : 'bg-brand-cream/60 text-brand-forest hover:bg-brand-teal/10'
+        }`}
+      >
+        On
+      </button>
+    </div>
+  );
+}
+
 function AspectRatioPicker({
   value,
   onChange,
@@ -281,7 +336,7 @@ function AspectRatioPicker({
   onChange: (next: AspectRatio) => void;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-brand-teal/15 bg-white px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-brand-teal/15 bg-white px-3 py-2">
       <span className="text-xs font-medium uppercase tracking-wide text-brand-slate">
         Aspect
       </span>

@@ -55,7 +55,11 @@ const XAI_EDITS_SUPPORTED_RATIOS = new Set([
 const XAI_EDITS_RATIO_SUBSTITUTE: Record<string, { ratio: string; note: string }> = {
   '4:5': {
     ratio: '3:4',
-    note: 'Frame the composition to work as a 4:5 Instagram feed crop (top ~6% and bottom ~6% of the 3:4 canvas should be safe margin).',
+    // Earlier iterations of this note mentioned "safe margins" and "crop
+    // zones" — the image model interpreted that as "paint a beige border at
+    // the top and bottom", which is exactly what we don't want. The prompt
+    // should only speak to composition intent, never to canvas mechanics.
+    note: 'Compose as a full-bleed portrait image — the entire canvas is photographic imagery, no borders, no empty margins, no letterboxing.',
   },
 };
 
@@ -105,16 +109,31 @@ export function getGeneratedFileExtension(_mimeType: string): string {
  * etc. in the prompt. Our callers today pass a single brand reference, so we
  * don't rewrite the prompt — noting it here so future multi-ref work knows.
  */
+/**
+ * xAI has no `negative_prompt` field on either endpoint. We fold the
+ * negatives into the prompt text instead, terminated with a period so the
+ * model treats it as a directive rather than an extension of the preceding
+ * sentence. Kept short — long negative lists start to read as "things to
+ * include" to the model.
+ */
+function appendNegatives(prompt: string, negativePrompt?: string): string {
+  const n = negativePrompt?.trim();
+  if (!n) return prompt;
+  return `${prompt}\n\nAvoid: ${n}.`;
+}
+
 function buildEditsBody(params: {
   modelId: string;
   prompt: string;
   aspectRatio: GenerateParams['aspectRatio'];
   refs: string[];
-}): Record<string, unknown> {
+  negativePrompt?: string;
+}): { body: Record<string, unknown>; finalPrompt: string; aspectRatio: string } {
   const { ratio, promptAddendum } = resolveEditsAspectRatio(params.aspectRatio);
-  const finalPrompt = promptAddendum
+  const withRatioHint = promptAddendum
     ? `${params.prompt}\n\n${promptAddendum}`
     : params.prompt;
+  const finalPrompt = appendNegatives(withRatioHint, params.negativePrompt);
 
   const base: Record<string, unknown> = {
     model:           params.modelId,
@@ -130,23 +149,29 @@ function buildEditsBody(params: {
     base.images = params.refs.map((url) => ({ url }));
   }
 
-  return base;
+  return { body: base, finalPrompt, aspectRatio: ratio };
 }
 
 function buildGenerationsBody(params: {
   modelId: string;
   prompt: string;
   aspectRatio: GenerateParams['aspectRatio'];
-}): Record<string, unknown> {
+  negativePrompt?: string;
+}): { body: Record<string, unknown>; finalPrompt: string; aspectRatio: string } {
   const aspectHint =
     ASPECT_RATIO_HINT[params.aspectRatio] ?? 'square format (1:1 aspect ratio)';
-  const finalPrompt = `${params.prompt}\n\nCompose this image in ${aspectHint}.`;
+  const withRatioHint = `${params.prompt}\n\nCompose this image in ${aspectHint}.`;
+  const finalPrompt = appendNegatives(withRatioHint, params.negativePrompt);
 
   return {
-    model:           params.modelId,
-    prompt:          finalPrompt,
-    n:               1,
-    response_format: 'b64_json',
+    body: {
+      model:           params.modelId,
+      prompt:          finalPrompt,
+      n:               1,
+      response_format: 'b64_json',
+    },
+    finalPrompt,
+    aspectRatio: params.aspectRatio,
   };
 }
 
@@ -167,24 +192,26 @@ export const xai: ImageProvider = {
 
     const hasRefs = refs.length > 0;
     const url     = hasRefs ? XAI_EDITS_URL : XAI_GENERATIONS_URL;
-    const body    = hasRefs
+    const built   = hasRefs
       ? buildEditsBody({
           modelId,
-          prompt:      params.prompt,
-          aspectRatio: params.aspectRatio,
+          prompt:         params.prompt,
+          aspectRatio:    params.aspectRatio,
           refs,
+          negativePrompt: params.negativePrompt,
         })
       : buildGenerationsBody({
           modelId,
-          prompt:      params.prompt,
-          aspectRatio: params.aspectRatio,
+          prompt:         params.prompt,
+          aspectRatio:    params.aspectRatio,
+          negativePrompt: params.negativePrompt,
         });
+    const body = built.body;
 
-    if (hasRefs) {
-      console.log(
-        `[xAI] /edits with ${refs.length} reference image(s), aspect_ratio=${params.aspectRatio}`,
-      );
-    }
+    console.log(
+      `[xAI] ${hasRefs ? `/edits with ${refs.length} reference image(s)` : '/generations (no refs)'}, ` +
+      `aspect_ratio=${built.aspectRatio}, prompt_len=${built.finalPrompt.length}`,
+    );
 
     const response = await fetch(url, {
       method: 'POST',
