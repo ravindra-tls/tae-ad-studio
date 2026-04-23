@@ -144,6 +144,22 @@ export const visualStage: Stage<VisualStageArgs, VisualStageOutput> = {
       );
     }
 
+    // Source-of-truth override: the caller told us which aspect_ratio to use,
+    // and it's already persisted on the visual_specs row separately. Claude's
+    // echoed value is purely for traceability inside `structured`, and we've
+    // seen it drift (return "1080x1350", a different enum value, or omit the
+    // field entirely — which hard-failed schema validation). Pre-inject the
+    // caller's value so the field can never be the reason we fail.
+    if (json && typeof json === 'object' && !Array.isArray(json)) {
+      const reported = (json as Record<string, unknown>).aspect_ratio;
+      if (reported !== input.aspect_ratio) {
+        console.warn(
+          `[visual] asked for aspect_ratio=${input.aspect_ratio}, Claude returned ${JSON.stringify(reported)}. Overriding to caller's value.`,
+        );
+      }
+      (json as Record<string, unknown>).aspect_ratio = input.aspect_ratio;
+    }
+
     const validation = VisualStructured.safeParse(json);
     if (!validation.success) {
       trace.push({
@@ -158,23 +174,10 @@ export const visualStage: Stage<VisualStageArgs, VisualStageOutput> = {
       );
     }
 
-    // Sanity: Claude should echo the requested aspect_ratio. If it doesn't,
-    // we trust the caller's request rather than Claude's drift.
-    const aspectRatio =
-      validation.data.aspect_ratio === input.aspect_ratio
-        ? validation.data.aspect_ratio
-        : input.aspect_ratio;
-
-    if (validation.data.aspect_ratio !== input.aspect_ratio) {
-      console.warn(
-        `[visual] asked for aspect_ratio=${input.aspect_ratio}, got ${validation.data.aspect_ratio}. Overriding to caller's value.`,
-      );
-    }
-
     const output: VisualStageOutput = {
-      structured: { ...validation.data, aspect_ratio: aspectRatio },
+      structured: validation.data,
       prompt_text: validation.data.prompt_text,
-      aspect_ratio: aspectRatio,
+      aspect_ratio: input.aspect_ratio,
       prompt_version: VISUAL_PROMPT_VERSION,
       model: VISUAL_MODEL,
     };
@@ -186,7 +189,7 @@ export const visualStage: Stage<VisualStageArgs, VisualStageOutput> = {
       output: {
         prompt_version: VISUAL_PROMPT_VERSION,
         model: VISUAL_MODEL,
-        aspect_ratio: aspectRatio,
+        aspect_ratio: input.aspect_ratio,
         prompt_length: validation.data.prompt_text.length,
         text_zone_count: validation.data.text_zones.length,
       },
