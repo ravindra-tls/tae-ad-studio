@@ -18,14 +18,16 @@
  *     so Ravindra can eyeball which signal is better before we lock one in.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import type { Brief, Concept, Session, Product } from '@/types';
 import type { SamenessRound } from '@/lib/pipeline/stages/sameness';
+import type { AspectRatio } from '@/lib/hooks/use-generation-stream';
 import { BriefForm } from './brief-form';
 import { BriefCard } from './brief-card';
 import { ConceptGallery } from './concept-gallery';
+import { GenerationDrawer } from './generation-drawer';
 
 interface BriefWorkspaceProps {
   session: Session & { product?: Product };
@@ -48,6 +50,23 @@ export function BriefWorkspace({
   const [briefLoading, setBriefLoading] = useState(false);
   const [conceptLoading, setConceptLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Generation drawer state — opened from concept gallery's Continue button.
+  // Aspect ratio defaults to 1:1 for now; a picker belongs here as a follow-up
+  // once we know which ratios marketers actually use most (pending usage data).
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerConceptIds, setDrawerConceptIds] = useState<string[]>([]);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+
+  // Resolve the ID list to full Concept rows in declared order. Memoized so
+  // the drawer's effect dependency on `concepts` stays stable until selection
+  // actually changes.
+  const drawerConcepts = useMemo(() => {
+    const byId = new Map(concepts.map((c) => [c.id, c]));
+    return drawerConceptIds
+      .map((id) => byId.get(id))
+      .filter((c): c is Concept => Boolean(c));
+  }, [drawerConceptIds, concepts]);
 
   // Initial phase: wherever the server hydration leaves us.
   const initialPhase: Phase =
@@ -151,11 +170,10 @@ export function BriefWorkspace({
   }
 
   function handleContinue(selectedIds: string[]) {
-    // Phase 2 target: hand off to copy/visual generation. For the shell we just
-    // surface a message so the whole flow is clickable end-to-end.
-    setError(
-      `Selected ${selectedIds.length} concept${selectedIds.length === 1 ? '' : 's'}. Downstream copy + visual generation lands in Phase 2.`,
-    );
+    if (selectedIds.length === 0) return;
+    setError(null);
+    setDrawerConceptIds(selectedIds);
+    setDrawerOpen(true);
   }
 
   const productName = session.product?.name ?? 'Session';
@@ -213,6 +231,11 @@ export function BriefWorkspace({
           />
         )}
 
+      {/* Aspect ratio picker — governs what size the generator hands to xAI. */}
+      {phase === 'concepts_ready' && concepts.length > 0 && (
+        <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
+      )}
+
       {/* Step 3: Concept gallery + sameness debug. */}
       {(phase === 'concepts_loading' || phase === 'concepts_ready') && (
         <ConceptGallery
@@ -224,6 +247,62 @@ export function BriefWorkspace({
           onContinue={handleContinue}
         />
       )}
+
+      <GenerationDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        concepts={drawerConcepts}
+        aspectRatio={aspectRatio}
+        sessionId={session.id}
+      />
+    </div>
+  );
+}
+
+/**
+ * Compact aspect-ratio picker. Keeps the marketer's ratio choice next to the
+ * concept gallery so they don't have to hunt for it inside the drawer mid-run.
+ * The set here mirrors lib/hooks/use-generation-stream AspectRatio — add new
+ * ratios in both places.
+ */
+const ASPECT_OPTIONS: Array<{ value: AspectRatio; label: string; hint: string }> = [
+  { value: '1:1', label: '1:1', hint: 'Feed square' },
+  { value: '4:5', label: '4:5', hint: 'Instagram portrait' },
+  { value: '9:16', label: '9:16', hint: 'Stories / Reels' },
+  { value: '16:9', label: '16:9', hint: 'Landscape' },
+  { value: '3:4', label: '3:4', hint: 'Portrait' },
+];
+
+function AspectRatioPicker({
+  value,
+  onChange,
+}: {
+  value: AspectRatio;
+  onChange: (next: AspectRatio) => void;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-brand-teal/15 bg-white px-3 py-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-brand-slate">
+        Aspect
+      </span>
+      {ASPECT_OPTIONS.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              active
+                ? 'bg-brand-teal text-white'
+                : 'bg-brand-cream/60 text-brand-forest hover:bg-brand-teal/10'
+            }`}
+            title={opt.hint}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
