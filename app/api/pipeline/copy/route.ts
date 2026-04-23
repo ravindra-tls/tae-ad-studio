@@ -55,14 +55,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  // ── Ownership: read concept via RLS. 404 if non-owner. ────────────────────
-  const { data: conceptRow, error: conceptError } = await supabase
+  // ── Ownership: fetch concept + chain to session via service client.
+  //    RLS on user-scoped client was returning null for legitimate owners
+  //    in Route Handler context; enforce ownership explicitly instead.
+  const service = await createServiceClient();
+  const { data: conceptRow, error: conceptError } = await service
     .from('concepts')
-    .select('*')
+    .select('*, brief:briefs!inner(session:sessions!inner(user_id))')
     .eq('id', parsed.concept_id)
     .single();
 
-  if (conceptError || !conceptRow) {
+  if (
+    conceptError ||
+    !conceptRow ||
+    (conceptRow as unknown as { brief: { session: { user_id: string } } }).brief.session.user_id !== user.id
+  ) {
     return NextResponse.json(
       { error: 'Concept not found or not accessible' },
       { status: 404 },
@@ -71,7 +78,6 @@ export async function POST(request: Request) {
   const concept = conceptRow as Concept;
 
   // ── Fetch brief + product + brand via service client ─────────────────────
-  const service = await createServiceClient();
   const [{ data: briefRow, error: briefError }] = await Promise.all([
     service.from('briefs').select('*').eq('id', concept.brief_id).single(),
   ]);

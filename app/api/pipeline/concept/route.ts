@@ -59,23 +59,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  // ── Ownership: read brief via RLS client. Policy requires the brief's
-  //    session.user_id = auth.uid(), so a non-owner gets 404 here.
-  const { data: briefRow, error: briefError } = await supabase
+  // ── Ownership: fetch brief + parent session via service client, enforce
+  //    ownership explicitly. RLS on the user-scoped client was returning
+  //    null for legitimately-owned rows in Route Handler context (same
+  //    RLS quirk /prompts and /brief page already worked around).
+  const service = await createServiceClient();
+  const { data: briefRow, error: briefError } = await service
     .from('briefs')
-    .select('*')
+    .select('*, session:sessions!inner(user_id)')
     .eq('id', parsed.brief_id)
     .single();
 
-  if (briefError || !briefRow) {
+  if (
+    briefError ||
+    !briefRow ||
+    (briefRow as unknown as { session: { user_id: string } }).session.user_id !== user.id
+  ) {
     return NextResponse.json(
       { error: 'Brief not found or not accessible' },
       { status: 404 },
     );
   }
-
-  // ── Fetch product + brand via service client ──────────────────────────────
-  const service = await createServiceClient();
   const [{ data: product, error: productError }, brand] = await Promise.all([
     service.from('products').select('*').eq('id', briefRow.product_id).single(),
     getBrandConfig(),

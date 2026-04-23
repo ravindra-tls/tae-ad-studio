@@ -84,14 +84,19 @@ export async function POST(request: Request) {
 
   const autoRefine = parsed.auto_refine ?? true;
 
-  // ── Ownership: concept via RLS ────────────────────────────────────────────
-  const { data: conceptRow, error: conceptError } = await supabase
+  // ── Ownership: concept + chain to session via service client ────────────
+  const service = await createServiceClient();
+  const { data: conceptRow, error: conceptError } = await service
     .from('concepts')
-    .select('*')
+    .select('*, brief:briefs!inner(session:sessions!inner(user_id))')
     .eq('id', parsed.concept_id)
     .single();
 
-  if (conceptError || !conceptRow) {
+  if (
+    conceptError ||
+    !conceptRow ||
+    (conceptRow as unknown as { brief: { session: { user_id: string } } }).brief.session.user_id !== user.id
+  ) {
     return NextResponse.json(
       { error: 'Concept not found or not accessible' },
       { status: 404 },
@@ -102,12 +107,12 @@ export async function POST(request: Request) {
   // ── Verify copy_block + visual_spec belong to this concept ───────────────
   const [{ data: cbRow, error: cbError }, { data: vsRow, error: vsError }] =
     await Promise.all([
-      supabase
+      service
         .from('copy_blocks')
         .select('*')
         .eq('id', parsed.copy_block_id)
         .single(),
-      supabase
+      service
         .from('visual_specs')
         .select('*')
         .eq('id', parsed.visual_spec_id)
@@ -143,7 +148,6 @@ export async function POST(request: Request) {
   const visualSpec = vsRow as VisualSpec;
 
   // ── Brief + product + brand via service client ───────────────────────────
-  const service = await createServiceClient();
   const { data: briefRow, error: briefError } = await service
     .from('briefs')
     .select('*')

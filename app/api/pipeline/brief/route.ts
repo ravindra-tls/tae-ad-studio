@@ -60,12 +60,17 @@ export async function POST(request: Request) {
   }
 
   // ── Ownership check: the session must belong to this user ─────────────────
-  // Using the RLS-aware client forces auth.uid() = user.id on the sessions
-  // policy, so a user cannot produce a brief on someone else's session.
-  const { data: session, error: sessionError } = await supabase
+  // RLS on the user-scoped client was returning null for legitimately-owned
+  // sessions in Route Handler context (same issue the /prompts page worked
+  // around). Enforce ownership explicitly with `user_id = user.id` on the
+  // service client — the filter matches exactly what the RLS policy would
+  // evaluate, just without the broken path.
+  const service = await createServiceClient();
+  const { data: session, error: sessionError } = await service
     .from('sessions')
     .select('id, user_id, product_id')
     .eq('id', parsed.session_id)
+    .eq('user_id', user.id)
     .single();
 
   if (sessionError || !session) {
@@ -76,8 +81,6 @@ export async function POST(request: Request) {
   }
 
   // ── Fetch product + brand with service client ─────────────────────────────
-  const service = await createServiceClient();
-
   const [{ data: product, error: productError }, brand] = await Promise.all([
     service.from('products').select('*').eq('id', session.product_id).single(),
     getBrandConfig(),

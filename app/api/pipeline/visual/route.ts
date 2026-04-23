@@ -55,14 +55,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  // ── Ownership: concept via RLS ────────────────────────────────────────────
-  const { data: conceptRow, error: conceptError } = await supabase
+  // ── Ownership: concept + chain to session via service client ────────────
+  const service = await createServiceClient();
+  const { data: conceptRow, error: conceptError } = await service
     .from('concepts')
-    .select('*')
+    .select('*, brief:briefs!inner(session:sessions!inner(user_id))')
     .eq('id', parsed.concept_id)
     .single();
 
-  if (conceptError || !conceptRow) {
+  if (
+    conceptError ||
+    !conceptRow ||
+    (conceptRow as unknown as { brief: { session: { user_id: string } } }).brief.session.user_id !== user.id
+  ) {
     return NextResponse.json(
       { error: 'Concept not found or not accessible' },
       { status: 404 },
@@ -73,7 +78,7 @@ export async function POST(request: Request) {
   // ── Optional copy_block: must belong to the same concept ─────────────────
   let copyBlock: { id: string; structured: Record<string, unknown> } | null = null;
   if (parsed.copy_block_id) {
-    const { data: cb, error: cbError } = await supabase
+    const { data: cb, error: cbError } = await service
       .from('copy_blocks')
       .select('*')
       .eq('id', parsed.copy_block_id)
@@ -95,7 +100,6 @@ export async function POST(request: Request) {
   }
 
   // ── Brief + product + brand via service ──────────────────────────────────
-  const service = await createServiceClient();
   const { data: briefRow, error: briefError } = await service
     .from('briefs')
     .select('*')

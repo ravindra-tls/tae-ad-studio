@@ -52,14 +52,19 @@ export async function PATCH(
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  // ── Ownership: read concept via RLS client. 404 if not accessible. ───────
-  const { data: conceptRow, error: readError } = await supabase
+  // ── Ownership: concept + chain to session via service client ────────────
+  const service = await createServiceClient();
+  const { data: conceptRow, error: readError } = await service
     .from('concepts')
-    .select('*')
+    .select('*, brief:briefs!inner(session:sessions!inner(user_id))')
     .eq('id', params.id)
     .single();
 
-  if (readError || !conceptRow) {
+  if (
+    readError ||
+    !conceptRow ||
+    (conceptRow as unknown as { brief: { session: { user_id: string } } }).brief.session.user_id !== user.id
+  ) {
     return NextResponse.json(
       { error: 'Concept not found or not accessible' },
       { status: 404 },
@@ -76,9 +81,7 @@ export async function PATCH(
 
   // ── Enforce max selections when selecting ────────────────────────────────
   if (body.selected) {
-    // Count via RLS client so we naturally scope to concepts the user can see
-    // under the same brief.
-    const { count, error: countError } = await supabase
+    const { count, error: countError } = await service
       .from('concepts')
       .select('id', { count: 'exact', head: true })
       .eq('brief_id', concept.brief_id)
@@ -100,8 +103,7 @@ export async function PATCH(
     }
   }
 
-  // ── Write via service client ─────────────────────────────────────────────
-  const service = await createServiceClient();
+  // ── Write via service client (already created above) ─────────────────────
   const { data: updated, error: updateError } = await service
     .from('concepts')
     .update({ selected_at: body.selected ? new Date().toISOString() : null })

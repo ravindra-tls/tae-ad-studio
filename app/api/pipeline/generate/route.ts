@@ -158,14 +158,18 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── Ownership: concept via RLS ────────────────────────────────────────────
-  const { data: conceptRow, error: conceptError } = await supabase
+  // ── Ownership: concept + chain to session via service client ────────────
+  const { data: conceptRow, error: conceptError } = await service
     .from('concepts')
-    .select('*')
+    .select('*, brief:briefs!inner(session:sessions!inner(user_id))')
     .eq('id', parsed.concept_id)
     .single();
 
-  if (conceptError || !conceptRow) {
+  if (
+    conceptError ||
+    !conceptRow ||
+    (conceptRow as unknown as { brief: { session: { user_id: string } } }).brief.session.user_id !== user.id
+  ) {
     return new Response(
       JSON.stringify({ error: 'Concept not found or not accessible' }),
       { status: 404, headers: { 'Content-Type': 'application/json' } },
