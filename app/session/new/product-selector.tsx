@@ -68,20 +68,59 @@ export function ProductSelector({ products }: ProductSelectorProps) {
     }
   }, [creatingFor]);
 
-  const handleFilesSelected = (files: FileList) => {
-    Array.from(files).forEach((file) => {
+  // Downscale + JPEG-encode so we do not blow the ~5MB sessionStorage quota
+  // when stashing previews between pages. Phone photos come in at 4-8MB as
+  // PNG data URLs; after this they are typically 150-400KB each.
+  const MAX_EDGE_PX = 1280;
+  const JPEG_QUALITY = 0.85;
+
+  const compressToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
+      reader.onerror = () => reject(reader.error);
       reader.onload = () => {
+        const src = reader.result as string;
+        const img = new Image();
+        img.onerror = () => reject(new Error('Image decode failed'));
+        img.onload = () => {
+          const longEdge = Math.max(img.width, img.height);
+          const scale = longEdge > MAX_EDGE_PX ? MAX_EDGE_PX / longEdge : 1;
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            // Fallback to the raw dataUrl — caller handles quota failure downstream.
+            resolve(src);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+        };
+        img.src = src;
+      };
+      reader.readAsDataURL(file);
+    });
+
+  const handleFilesSelected = (files: FileList) => {
+    Array.from(files).forEach(async (file) => {
+      try {
+        const dataUrl = await compressToDataUrl(file);
         setUploadedPreviews((prev) => [
           ...prev,
           {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            dataUrl: reader.result as string,
+            dataUrl,
             name: file.name,
           },
         ]);
-      };
-      reader.readAsDataURL(file);
+      } catch {
+        // If compression fails (bad file, OOM in canvas), skip this image
+        // rather than taking down the whole upload step.
+        setError(`Could not process ${file.name}. Try a smaller image.`);
+      }
     });
   };
 
@@ -110,12 +149,26 @@ export function ProductSelector({ products }: ProductSelectorProps) {
 
   const proceedToTemplates = () => {
     if (!createdSessionId) return;
-    // Store uploaded images in sessionStorage so the prompts page can pick them up
+    // Store uploaded images in sessionStorage so the prompts page can pick
+    // them up. sessionStorage caps around 5MB per origin — we pre-compress
+    // in handleFilesSelected, but large batches can still overflow. If it
+    // does, surface a hint and let the user continue without the refs
+    // rather than crashing the page.
     if (uploadedPreviews.length > 0) {
-      sessionStorage.setItem(
-        `ref-images-${createdSessionId}`,
-        JSON.stringify(uploadedPreviews),
-      );
+      try {
+        sessionStorage.setItem(
+          `ref-images-${createdSessionId}`,
+          JSON.stringify(uploadedPreviews),
+        );
+      } catch (e) {
+        console.warn(
+          '[product-selector] sessionStorage quota exceeded; continuing without stashed refs.',
+          e,
+        );
+        setError(
+          'Too many or too-large images to carry over. Continuing without references — you can attach them on the next screen.',
+        );
+      }
     }
     router.push(`/session/${createdSessionId}/prompts`);
   };
