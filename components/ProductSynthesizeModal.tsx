@@ -54,7 +54,60 @@ type ImageInput = {
   mediaType: string;
 };
 
+// Document attachments (PDF, DOCX, PPTX, TXT, MD) — mirror `ImageInput` except
+// no object-URL preview is needed (we render a file-icon chip instead).
+type DocumentInput = {
+  id: string;
+  file: File;
+  base64: string;
+  mediaType: string;
+};
+
 type Step = 'input' | 'processing' | 'review';
+
+// Must stay in lockstep with lib/document-extractor.ts and the route handler.
+const MAX_DOCUMENTS = 3;
+const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024;
+const DOC_ACCEPT = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/markdown',
+];
+// For the <input accept=""> attribute: extensions are friendlier than raw MIME
+// types in some browsers (esp. for .md which isn't always registered).
+const DOC_ACCEPT_ATTR = '.pdf,.docx,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown';
+
+function inferDocMediaType(file: File): string {
+  // Browsers are inconsistent about .md (sometimes empty, sometimes text/markdown,
+  // sometimes text/x-markdown). Normalize to one of the types the server accepts.
+  if (file.type && DOC_ACCEPT.includes(file.type)) return file.type;
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  if (name.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (name.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  if (name.endsWith('.md')) return 'text/markdown';
+  if (name.endsWith('.txt')) return 'text/plain';
+  return file.type || 'application/octet-stream';
+}
+
+function docLabel(mediaType: string): string {
+  switch (mediaType) {
+    case 'application/pdf': return 'PDF';
+    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': return 'DOCX';
+    case 'application/vnd.openxmlformats-officedocument.presentationml.presentation': return 'PPTX';
+    case 'text/markdown': return 'MD';
+    case 'text/plain': return 'TXT';
+    default: return 'FILE';
+  }
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 interface Props {
   open: boolean;
@@ -189,7 +242,9 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
   const [textInput, setTextInput] = useState('');
   const [urls, setUrls] = useState<string[]>(['']);
   const [images, setImages] = useState<ImageInput[]>([]);
+  const [documents, setDocuments] = useState<DocumentInput[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const docFileRef = useRef<HTMLInputElement>(null);
 
   // Step 2/3 state — synthesized result
   const [synthesized, setSynthesized] = useState<SynthesizedProduct | null>(null);
@@ -206,6 +261,7 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
       setTextInput('');
       setUrls(['']);
       setImages([]);
+      setDocuments([]);
       setSynthesized(null);
       setDraft(null);
       setError(null);
@@ -247,12 +303,65 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
     });
   };
 
+  // ── Document management ────────────────────────────────────────────────────
+
+  const handleDocumentAdd = useCallback(async (files: FileList | null) => {
+    if (!files) return;
+    const rejected: string[] = [];
+    const newDocs: DocumentInput[] = [];
+
+    // Count remaining slots; reject anything past the cap so the user sees a
+    // clear message instead of a silent drop.
+    setDocuments((prev) => {
+      const availableSlots = Math.max(0, MAX_DOCUMENTS - prev.length);
+      const incoming = Array.from(files);
+      if (incoming.length > availableSlots) {
+        rejected.push(`Only ${availableSlots} more document slot${availableSlots === 1 ? '' : 's'} available — dropped ${incoming.length - availableSlots}.`);
+      }
+      // return prev unchanged for now — actual insert happens below after async base64
+      return prev;
+    });
+
+    const availableAtStart = MAX_DOCUMENTS - documents.length;
+    const incoming = Array.from(files).slice(0, Math.max(0, availableAtStart));
+
+    for (const file of incoming) {
+      const mediaType = inferDocMediaType(file);
+      if (!DOC_ACCEPT.includes(mediaType)) {
+        rejected.push(`${file.name}: unsupported type (use PDF, DOCX, PPTX, TXT, or MD).`);
+        continue;
+      }
+      if (file.size > MAX_DOCUMENT_BYTES) {
+        rejected.push(`${file.name}: ${formatBytes(file.size)} exceeds 32 MB limit.`);
+        continue;
+      }
+      const { data } = await fileToBase64(file);
+      newDocs.push({
+        id: uid(),
+        file,
+        base64: data,
+        mediaType,
+      });
+    }
+
+    if (newDocs.length > 0) setDocuments((prev) => [...prev, ...newDocs]);
+    if (rejected.length > 0) setError(rejected.join(' '));
+
+    // Clear the input so selecting the same file twice re-fires onChange.
+    if (docFileRef.current) docFileRef.current.value = '';
+  }, [documents.length]);
+
+  const removeDocument = (id: string) => {
+    setDocuments((prev) => prev.filter((d) => d.id !== id));
+  };
+
   // ── Synthesize ──────────────────────────────────────────────────────────────
 
   const canSynthesize =
     textInput.trim() ||
     urls.some((u) => u.trim()) ||
-    images.length > 0;
+    images.length > 0 ||
+    documents.length > 0;
 
   const handleSynthesize = async () => {
     setStep('processing');
@@ -264,6 +373,11 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
         data: img.base64,
         mediaType: img.mediaType,
       }));
+      const docPayload = documents.map((d) => ({
+        name: d.file.name,
+        data: d.base64,
+        mediaType: d.mediaType,
+      }));
 
       const res = await fetch('/api/products/synthesize', {
         method: 'POST',
@@ -272,6 +386,7 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
           text: textInput.trim() || undefined,
           urls: cleanUrls.length > 0 ? cleanUrls : undefined,
           images: imagePayload.length > 0 ? imagePayload : undefined,
+          documents: docPayload.length > 0 ? docPayload : undefined,
           existingProductId: existingProduct?.id,
         }),
       });
@@ -382,6 +497,10 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
               handleImageAdd={handleImageAdd}
               removeImage={removeImage}
               fileRef={fileRef}
+              documents={documents}
+              handleDocumentAdd={handleDocumentAdd}
+              removeDocument={removeDocument}
+              docFileRef={docFileRef}
               existingProduct={existingProduct}
             />
           )}
@@ -447,7 +566,9 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
 
 function InputStep({
   textInput, setTextInput, urls, addUrl, removeUrl, updateUrl,
-  images, handleImageAdd, removeImage, fileRef, existingProduct,
+  images, handleImageAdd, removeImage, fileRef,
+  documents, handleDocumentAdd, removeDocument, docFileRef,
+  existingProduct,
 }: {
   textInput: string;
   setTextInput: (v: string) => void;
@@ -458,7 +579,11 @@ function InputStep({
   images: ImageInput[];
   handleImageAdd: (files: FileList | null) => void;
   removeImage: (id: string) => void;
-  fileRef: React.RefObject<HTMLInputElement | null>;
+  fileRef: React.RefObject<HTMLInputElement>;
+  documents: DocumentInput[];
+  handleDocumentAdd: (files: FileList | null) => void;
+  removeDocument: (id: string) => void;
+  docFileRef: React.RefObject<HTMLInputElement>;
   existingProduct?: Product | null;
 }) {
   return (
@@ -573,6 +698,64 @@ function InputStep({
             <Upload className="h-4 w-4 text-brand-sage/50" />
             <span className="text-[9px] text-brand-sage/50">Upload</span>
           </button>
+        </div>
+      </div>
+
+      {/* Documents — PDF, DOCX, PPTX, TXT, MD. Same one-shot pattern as URLs/images. */}
+      <div>
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-brand-forest mb-2">
+          <FileText className="h-3.5 w-3.5" /> Reference Documents
+          <span className="text-[9px] font-normal text-brand-slate/50">
+            ({documents.length}/{MAX_DOCUMENTS})
+          </span>
+        </label>
+        <p className="text-[10px] text-brand-slate/60 mb-2">
+          Upload brand guides, spec sheets, one-pagers, or briefs — PDF, DOCX, PPTX, TXT, or MD up to 32 MB each.
+        </p>
+
+        <input
+          ref={docFileRef}
+          type="file"
+          multiple
+          accept={DOC_ACCEPT_ATTR}
+          className="hidden"
+          onChange={(e) => handleDocumentAdd(e.target.files)}
+        />
+
+        <div className="space-y-2">
+          {documents.map((doc) => (
+            <div
+              key={doc.id}
+              className="flex items-center gap-2.5 p-2 rounded-lg bg-brand-cream/40 border border-brand-sage/15"
+            >
+              <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-teal/10 text-brand-teal">
+                {docLabel(doc.mediaType)}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-brand-navy truncate" title={doc.file.name}>
+                  {doc.file.name}
+                </p>
+                <p className="text-[10px] text-brand-slate/50">{formatBytes(doc.file.size)}</p>
+              </div>
+              <button
+                onClick={() => removeDocument(doc.id)}
+                className="p-1 rounded hover:bg-red-50 text-brand-slate/40 hover:text-red-500 transition-colors shrink-0"
+                aria-label={`Remove ${doc.file.name}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+
+          {documents.length < MAX_DOCUMENTS && (
+            <button
+              onClick={() => docFileRef.current?.click()}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border-2 border-dashed border-brand-sage/30 hover:border-brand-teal/50 hover:bg-brand-cream/50 transition-colors text-xs text-brand-sage/70 hover:text-brand-teal"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              {documents.length === 0 ? 'Upload documents' : 'Add another document'}
+            </button>
+          )}
         </div>
       </div>
     </div>

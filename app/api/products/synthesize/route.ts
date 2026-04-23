@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  extractDocumentText,
+  isSupportedDocMediaType,
+  MAX_DOCUMENT_BYTES,
+  type DocumentInput,
+  type ExtractedText,
+} from '@/lib/document-extractor';
 
 export const maxDuration = 120;  // allow up to 2 min for multi-source synthesis
+
+/** Server-side cap on documents per request — matches the modal's UI cap. */
+const MAX_DOCUMENTS = 3;
 
 // ─── Schema description sent to Claude ────────────────────────────────────────
 
@@ -119,6 +129,8 @@ function buildContentBlocks(
   urls: string[],
   scrapedTexts: string[],
   imageBase64s: Array<{ data: string; mediaType: string }>,
+  pdfDocs: DocumentInput[],
+  extractedDocs: ExtractedText[],
 ): Anthropic.ContentBlockParam[] {
   const blocks: Anthropic.ContentBlockParam[] = [];
 
@@ -138,6 +150,34 @@ function buildContentBlocks(
         text: `## Content from ${url}:\n${scrapedTexts[i]}`,
       });
     }
+  });
+
+  // PDFs via Claude's native document content block — we send the base64
+  // directly so Claude can read the layout + images, then follow each with a
+  // framing instruction so it knows how to treat the doc.
+  pdfDocs.forEach((doc, i) => {
+    blocks.push({
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: 'application/pdf',
+        data: doc.data,
+      },
+    });
+    blocks.push({
+      type: 'text',
+      text: `(PDF ${i + 1} above — "${doc.name}". Extract any product facts visible: name, claims, ingredients, pricing, dosage, usage instructions, certifications, imagery cues. Treat it as reference material, not as marketing copy to quote verbatim.)`,
+    });
+  });
+
+  // Extracted text from DOCX / PPTX / TXT / MD — presented as labelled text blocks
+  extractedDocs.forEach((doc) => {
+    if (!doc.text) return;
+    const suffix = doc.truncated ? ' (truncated to fit context)' : '';
+    blocks.push({
+      type: 'text',
+      text: `## Document: ${doc.name}${suffix}\n${doc.text}`,
+    });
   });
 
   // Images via vision
@@ -178,20 +218,52 @@ export async function POST(request: Request) {
     text,
     urls = [],
     images = [],          // Array of { data: base64, mediaType: string }
+    documents = [],       // Array of { name, data: base64, mediaType: string }
     existingProductId,     // Optional — if editing an existing product
   } = body as {
     text?: string;
     urls?: string[];
     images?: Array<{ data: string; mediaType: string }>;
+    documents?: DocumentInput[];
     existingProductId?: string;
   };
 
   // Validate at least one input source
-  if (!text?.trim() && urls.length === 0 && images.length === 0) {
+  if (
+    !text?.trim() &&
+    urls.length === 0 &&
+    images.length === 0 &&
+    documents.length === 0
+  ) {
     return NextResponse.json(
-      { error: 'At least one input source (text, URL, or image) is required.' },
+      { error: 'At least one input source (text, URL, image, or document) is required.' },
       { status: 400 },
     );
+  }
+
+  // Validate documents upfront so the error message is actionable and we
+  // don't waste the Anthropic call on a bad payload.
+  if (documents.length > MAX_DOCUMENTS) {
+    return NextResponse.json(
+      { error: `At most ${MAX_DOCUMENTS} documents per request (got ${documents.length}).` },
+      { status: 400 },
+    );
+  }
+  for (const doc of documents) {
+    if (!isSupportedDocMediaType(doc.mediaType)) {
+      return NextResponse.json(
+        { error: `Unsupported document type "${doc.mediaType}" on "${doc.name}". Allowed: PDF, DOCX, PPTX, TXT, MD.` },
+        { status: 400 },
+      );
+    }
+    // base64 decodes to ~0.75× its string length; cheap upfront size guard.
+    const approxBytes = Math.floor(doc.data.length * 0.75);
+    if (approxBytes > MAX_DOCUMENT_BYTES) {
+      return NextResponse.json(
+        { error: `"${doc.name}" exceeds the ${MAX_DOCUMENT_BYTES / (1024 * 1024)}MB per-document limit.` },
+        { status: 400 },
+      );
+    }
   }
 
   // Check API key
@@ -207,10 +279,26 @@ export async function POST(request: Request) {
     // 1. Scrape URLs in parallel
     const scrapedTexts = await Promise.all(urls.map(scrapeUrl));
 
-    // 2. Build Claude message content
-    const contentBlocks = buildContentBlocks(text, urls, scrapedTexts, images);
+    // 2. Split documents: PDFs stay as base64 for Claude's native document
+    //    blocks; everything else goes through text extraction so we don't
+    //    pay attachment tokens for formats Claude doesn't handle natively.
+    const pdfDocs = documents.filter((d) => d.mediaType === 'application/pdf');
+    const otherDocs = documents.filter((d) => d.mediaType !== 'application/pdf');
+    const extracted = (
+      await Promise.all(otherDocs.map((d) => extractDocumentText(d)))
+    ).filter((e): e is ExtractedText => e !== null);
 
-    // 3. Call Claude API
+    // 3. Build Claude message content
+    const contentBlocks = buildContentBlocks(
+      text,
+      urls,
+      scrapedTexts,
+      images,
+      pdfDocs,
+      extracted,
+    );
+
+    // 4. Call Claude API
     const anthropic = new Anthropic({ apiKey });
 
     const response = await anthropic.messages.create({
@@ -225,7 +313,7 @@ export async function POST(request: Request) {
       ],
     });
 
-    // 4. Extract JSON from response
+    // 5. Extract JSON from response
     const responseText = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
@@ -238,7 +326,7 @@ export async function POST(request: Request) {
 
     const synthesized = JSON.parse(jsonStr);
 
-    // 5. If editing, fetch existing product for diff
+    // 6. If editing, fetch existing product for diff
     let existingProduct = null;
     if (existingProductId) {
       const { data } = await supabase
