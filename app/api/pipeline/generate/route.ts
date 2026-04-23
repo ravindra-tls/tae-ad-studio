@@ -56,6 +56,8 @@ import { getBrandConfig } from '@/lib/brand-config';
 import { copyStage } from '@/lib/pipeline/stages/copy';
 import { visualStage } from '@/lib/pipeline/stages/visual';
 import { renderStage } from '@/lib/pipeline/stages/render';
+import { composeOverlay } from '@/lib/pipeline/stages/overlay';
+import type { TextZone } from '@/lib/pipeline/schemas/visual';
 import {
   critiqueStage,
   refineCopyStage,
@@ -306,6 +308,144 @@ export async function POST(request: Request) {
         return items.length > 0 ? items.join(', ') : undefined;
       }
 
+      /**
+       * Extract text_zones + palette from a visual_specs row so we can hand
+       * them to the overlay stage. Keeps the splice site cleaner and isolates
+       * the structured-to-overlay-input coercion.
+       */
+      function overlayInputsFrom(structured: unknown): {
+        textZones: TextZone[];
+        palette: string[];
+      } {
+        if (!structured || typeof structured !== 'object') {
+          return { textZones: [], palette: [] };
+        }
+        const s = structured as Record<string, unknown>;
+        const zones = Array.isArray(s.text_zones) ? (s.text_zones as TextZone[]) : [];
+        const palette = Array.isArray(s.palette)
+          ? (s.palette as unknown[]).filter((x): x is string => typeof x === 'string')
+          : [];
+        return { textZones: zones, palette };
+      }
+
+      /**
+       * Extract the five overlay-able copy fields from a copy_blocks row.
+       * If the row is missing / malformed we return empty strings and the
+       * overlay stage will no-op. (Rather than throwing and taking the
+       * whole pipeline down, we'd rather ship the un-overlaid image.)
+       */
+      function overlayCopyFrom(structured: unknown): {
+        headline: string;
+        subhead: string | null;
+        body: string;
+        cta: string;
+        disclosure: string | null;
+      } {
+        const fallback = { headline: '', subhead: null, body: '', cta: '', disclosure: null };
+        if (!structured || typeof structured !== 'object') return fallback;
+        const s = structured as Record<string, unknown>;
+        const headlineObj = s.headline;
+        const headline =
+          headlineObj && typeof headlineObj === 'object' && typeof (headlineObj as Record<string, unknown>).text === 'string'
+            ? ((headlineObj as Record<string, unknown>).text as string)
+            : '';
+        return {
+          headline,
+          subhead: typeof s.subhead === 'string' && s.subhead.length > 0 ? (s.subhead as string) : null,
+          body: typeof s.body === 'string' ? (s.body as string) : '',
+          cta: typeof s.cta === 'string' ? (s.cta as string) : '',
+          disclosure:
+            typeof s.disclosure === 'string' && (s.disclosure as string).length > 0
+              ? (s.disclosure as string)
+              : null,
+        };
+      }
+
+      /**
+       * Upload with a tiny retry loop. Supabase Storage is flaky enough in
+       * practice that a single Bad Gateway loses the whole generation — we've
+       * seen this user-facing in the brief drawer. Two retries with a short
+       * backoff are cheap and catch the vast majority of transient 502/503s
+       * without papering over a real outage (after 3 tries we surface the
+       * error to the caller).
+       */
+      async function uploadWithRetry(
+        path: string,
+        bytes: Buffer,
+        contentType: string,
+        label: 'initial' | 'refine',
+      ): Promise<void> {
+        let lastErr: unknown = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const { error } = await service.storage
+            .from('generated-images')
+            .upload(path, bytes, { contentType, upsert: true });
+          if (!error) return;
+          lastErr = error;
+          if (attempt < 3) {
+            console.warn(
+              `[pipeline/generate] storage upload ${label} attempt ${attempt} failed: ${error.message}. Retrying...`,
+            );
+            // 500ms, 1500ms — enough to clear a typical transient 502.
+            await new Promise((r) => setTimeout(r, 500 * attempt ** 2));
+          }
+        }
+        const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+        throw new Error(`Image upload failed after 3 attempts: ${msg}`);
+      }
+
+      /**
+       * Best-effort overlay composite. Wraps composeOverlay so orchestrator
+       * code doesn't balloon with try/catch; on any failure we log and return
+       * the original bytes unchanged. Overlay is strictly an enhancement —
+       * never a reason to fail the whole generation.
+       */
+      async function overlayOrRaw(args: {
+        imageBytes: Buffer;
+        mimeType: string;
+        aspectRatio: AspectRatio;
+        visualStructured: unknown;
+        copyStructured: unknown;
+        brandPalette: string[];
+        pass: 'initial' | 'refine';
+      }): Promise<{ bytes: Buffer; mimeType: string; zonesRendered: number; overlayed: boolean }> {
+        const { textZones, palette: visualPalette } = overlayInputsFrom(args.visualStructured);
+        const copy = overlayCopyFrom(args.copyStructured);
+        const palette = visualPalette.length > 0 ? visualPalette : args.brandPalette;
+
+        try {
+          const out = await composeOverlay({
+            imageBytes: args.imageBytes,
+            aspectRatio: args.aspectRatio,
+            textZones,
+            copy,
+            palette,
+          });
+          return {
+            bytes: out.imageBytes,
+            mimeType: out.mimeType,
+            zonesRendered: out.zonesRendered,
+            overlayed: true,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(
+            `[pipeline/generate] overlay stage (${args.pass}) threw — shipping raw image. ${msg}`,
+          );
+          emit({
+            type: 'stage_error',
+            stage: `overlay.${args.pass}`,
+            error: msg,
+          });
+          return {
+            bytes: args.imageBytes,
+            mimeType: args.mimeType,
+            zonesRendered: 0,
+            overlayed: false,
+          };
+        }
+      }
+
       emit({
         type: 'pipeline_start',
         concept_id: concept.id,
@@ -480,19 +620,47 @@ export async function POST(request: Request) {
         let finalImageUrl: string | undefined;
 
         if (renderResult.status === 'completed' && renderResult.image) {
-          const imageBytes = Buffer.from(renderResult.image.data, 'base64');
-          const fileExt = getGeneratedFileExtension(renderResult.image.mimeType);
+          const rawBytes = Buffer.from(renderResult.image.data, 'base64');
+
+          // Overlay the copy onto the render. Best-effort: on failure we
+          // ship the raw image rather than failing the whole pipeline.
+          const brandPalette = Array.isArray(
+            (brand?.visual as Record<string, unknown> | undefined)?.palette,
+          )
+            ? ((brand!.visual as Record<string, unknown>).palette as unknown[]).filter(
+                (x): x is string => typeof x === 'string',
+              )
+            : [];
+
+          const overlayStarted = Date.now();
+          emit({ type: 'stage_start', stage: 'overlay.initial', at: overlayStarted });
+          const composed = await overlayOrRaw({
+            imageBytes: rawBytes,
+            mimeType: renderResult.image.mimeType,
+            aspectRatio,
+            visualStructured: visualRow.structured,
+            copyStructured: copyRow.structured,
+            brandPalette,
+            pass: 'initial',
+          });
+          emit({
+            type: 'stage_complete',
+            stage: 'overlay.initial',
+            durationMs: Date.now() - overlayStarted,
+            output: {
+              zones_rendered: composed.zonesRendered,
+              overlayed: composed.overlayed,
+            },
+          });
+
+          // After overlay we always output PNG. When overlay no-ops we keep
+          // the original mime type — the file extension must follow suit.
+          const fileExt = composed.overlayed
+            ? 'png'
+            : getGeneratedFileExtension(composed.mimeType);
           const filePath = `${user.id}/${genImage.id}.${fileExt}`;
 
-          const { error: uploadErr } = await service.storage
-            .from('generated-images')
-            .upload(filePath, imageBytes, {
-              contentType: renderResult.image.mimeType,
-              upsert: true,
-            });
-          if (uploadErr) {
-            throw new Error(`Image upload failed: ${uploadErr.message}`);
-          }
+          await uploadWithRetry(filePath, composed.bytes, composed.mimeType, 'initial');
 
           const { data: publicUrlData } = service.storage
             .from('generated-images')
@@ -788,15 +956,54 @@ export async function POST(request: Request) {
                   );
 
                   if (reRender.status === 'completed' && reRender.image) {
-                    const bytes = Buffer.from(reRender.image.data, 'base64');
-                    const ext = getGeneratedFileExtension(reRender.image.mimeType);
+                    const rawRefineBytes = Buffer.from(reRender.image.data, 'base64');
+
+                    // Overlay copy onto the refined render (same copy row;
+                    // refine target was visual, not copy). Palette comes
+                    // from the refined visual first, with brand as fallback.
+                    const refineBrandPalette = Array.isArray(
+                      (brand?.visual as Record<string, unknown> | undefined)?.palette,
+                    )
+                      ? ((brand!.visual as Record<string, unknown>).palette as unknown[]).filter(
+                          (x): x is string => typeof x === 'string',
+                        )
+                      : [];
+
+                    const refineOverlayStarted = Date.now();
+                    emit({
+                      type: 'stage_start',
+                      stage: 'overlay.refine',
+                      at: refineOverlayStarted,
+                    });
+                    const refineComposed = await overlayOrRaw({
+                      imageBytes: rawRefineBytes,
+                      mimeType: reRender.image.mimeType,
+                      aspectRatio,
+                      visualStructured: newVisualRow.structured,
+                      copyStructured: copyRow.structured,
+                      brandPalette: refineBrandPalette,
+                      pass: 'refine',
+                    });
+                    emit({
+                      type: 'stage_complete',
+                      stage: 'overlay.refine',
+                      durationMs: Date.now() - refineOverlayStarted,
+                      output: {
+                        zones_rendered: refineComposed.zonesRendered,
+                        overlayed: refineComposed.overlayed,
+                      },
+                    });
+
+                    const ext = refineComposed.overlayed
+                      ? 'png'
+                      : getGeneratedFileExtension(refineComposed.mimeType);
                     const path = `${user.id}/${reImage.id}.${ext}`;
-                    await service.storage
-                      .from('generated-images')
-                      .upload(path, bytes, {
-                        contentType: reRender.image.mimeType,
-                        upsert: true,
-                      });
+                    await uploadWithRetry(
+                      path,
+                      refineComposed.bytes,
+                      refineComposed.mimeType,
+                      'refine',
+                    );
                     const { data: pub } = service.storage
                       .from('generated-images')
                       .getPublicUrl(path);
