@@ -33,8 +33,13 @@ export default async function BriefPage({ params }: { params: { id: string } }) 
     redirect(`/session/${params.id}/prompts`);
   }
 
-  // ── Fetch session (RLS enforces ownership) ───────────────────────────────
-  const { data: sessionRow } = await supabase
+  // ── Fetch session ────────────────────────────────────────────────────────
+  // Use the service client (same pattern as /prompts) — the products join
+  // runs into RLS quirks that return null under the user-scoped client even
+  // when the session row is legitimately readable. Ownership is enforced
+  // explicitly by the `user_id = user.id` filter.
+  const service = await createServiceClient();
+  const { data: sessionRow } = await service
     .from('sessions')
     .select('*, product:products(*)')
     .eq('id', params.id)
@@ -48,7 +53,6 @@ export default async function BriefPage({ params }: { params: { id: string } }) 
   // On a page refresh we want to resume where the user left off rather than
   // starting over. A newer brief supersedes older ones (V1 treats each brief
   // as a draft iteration).
-  const service = await createServiceClient();
   const { data: briefRows } = await service
     .from('briefs')
     .select('*')
