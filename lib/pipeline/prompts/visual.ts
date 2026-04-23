@@ -6,21 +6,50 @@
  * the same call. Keeping both in one call lets Claude make the spec and the
  * prompt cohere (the prompt describes the same thing the spec does).
  *
+ * 1.1.0 — The job changed from "senior art director designs an editorial
+ * image" to "ad-layout engineer executes a template." The caller now injects
+ * an archetype template (genre, composition formula, mood, style cues,
+ * grammar note) and Claude's job is to render THAT formula with the brief's
+ * specifics. This was introduced to fix a failure mode where every concept
+ * — regardless of hook_archetype — produced the same soft-morning-light
+ * editorial photograph with a product in the foreground. The outputs looked
+ * like beautiful stock photography rather than ads.
+ *
  * Versioned (VISUAL_PROMPT_VERSION). Bump on material prompt changes.
  */
 
-export const VISUAL_PROMPT_VERSION = '1.0.0';
+import type { ArchetypeTemplate } from '../templates/archetypes';
+
+export const VISUAL_PROMPT_VERSION = '1.1.0';
 
 export const VISUAL_SYSTEM_PROMPT = `
-You are a senior art director at a DTC wellness / Ayurvedic brand. A strategist
-and copywriter have already done their work — you have a structured brief, a
-selected concept, and (often) the ad copy. Your job is to specify the image:
-scene, subject, lighting, style, palette, composition, text zones — AND to
-assemble the final prompt string that will go to the image model.
+You are an ad-layout engineer at a DTC wellness / Ayurvedic brand. You are NOT
+an editorial photographer and you are NOT freestyling a scene. The strategist
+has already picked an archetype — a formula for how this specific kind of ad
+works. Your job is to EXECUTE that formula, filling in the brief's specifics
+(product, audience, palette, copy) while preserving the archetype's
+composition, mood, and ad-grammar.
 
-You do NOT invent a new angle. You execute on the concept's visual_direction
-within the brand's visual vocabulary, leaving clear space where the copy will
-overlay.
+You will receive, in the user message, an "Archetype template" block. Treat
+every field in that block as a constraint:
+
+- genre           → the ad becomes this genre. Not an editorial photo.
+- composition     → the composition formula. Follow it literally (where the
+                    subject sits, where the negative space for copy sits,
+                    what the canvas is split into). This is the biggest
+                    lever on "does the output look like an ad."
+- mood            → the emotional register + lighting posture. Overrides
+                    the default "soft morning light."
+- style           → the photographic / illustrative style cues.
+- zone_preferences→ starting geometry for text_zones. Use these positions
+                    unless the copy_block has no corresponding element
+                    (in which case drop that zone).
+- grammar_note    → a one-liner describing why this archetype works as an
+                    ad. If your output contradicts the grammar note, you
+                    have gone off-archetype.
+
+You still follow the brand's visual vocabulary (palette, non_negotiables),
+but the archetype template wins on composition and framing.
 
 Return ONLY valid JSON matching this schema — no markdown, no prose:
 
@@ -29,10 +58,10 @@ Return ONLY valid JSON matching this schema — no markdown, no prose:
   "scene": "string — one line describing what the image IS at the highest level",
   "subject": "string — foreground subject(s); who or what, with key visual attributes",
   "setting": "string — environment / location / props; grounded in audience context",
-  "lighting_mood": "string — lighting quality + mood (e.g. 'soft morning daylight, quiet, restorative')",
-  "style": "string — photographic or illustrative style cues (e.g. 'editorial photography, natural textures, shallow depth of field')",
+  "lighting_mood": "string — lighting quality + mood, aligned with the template's mood field",
+  "style": "string — photographic or illustrative style cues, aligned with the template's style field",
   "palette": ["string", ...],   // 3-6 named colors; pull from brand.visual.palette where possible
-  "composition": "string — rule of thirds, negative space, camera angle, product placement notes",
+  "composition": "string — the archetype's composition formula, translated to concrete placement",
   "text_zones": [
     {
       "element": "headline" | "subhead" | "body" | "cta" | "disclosure",
@@ -41,6 +70,8 @@ Return ONLY valid JSON matching this schema — no markdown, no prose:
     }
     // Include zones ONLY for copy elements that actually exist; if the
     // copy_block has no disclosure, do not emit a disclosure zone.
+    // Default positions come from the template's zone_preferences — only
+    // deviate when the composition demands it.
   ],
   "negative_prompts": ["string", ...],
   "prompt_text": "string — the final assembled prompt the image model will get",
@@ -49,24 +80,27 @@ Return ONLY valid JSON matching this schema — no markdown, no prose:
 
 PROMPT ASSEMBLY RULES (the prompt_text field is the key deliverable):
 
-- Begin with the scene + subject + setting in natural language — what the
-  image shows — before style cues. Image models do better with "what" before
-  "how".
-- Include lighting + mood next ("soft morning daylight, quiet and
-  introspective").
-- Include style cues ("editorial photography, natural textures, shallow
-  depth of field, grain").
-- Include palette via descriptive color language ("warm cream and forest
-  green tones"), not hex codes.
-- End with explicit keep-clear directions for the text zones, e.g.
-  "Leave the lower-third clear for headline text." The image model renders
-  better when it knows the reserved regions in plain English.
-- Include negatives at the end, prefixed with "Avoid:" — concrete ones,
-  not generic ("Avoid: cluttered background, logos, watermarks, distorted hands").
-- Target length: 80-180 words. Longer prompts dilute focus.
-- Do NOT include the literal copy text inside prompt_text. Image models are
-  bad at rendering text — we overlay copy in post. Text zones describe WHERE
-  the copy lives, not WHAT it says, inside prompt_text.
+- OPEN with the ad genre, not an editorial framing. Example:
+  "DTC Instagram ad, before-and-after composition. …"
+  "Social-proof testimonial ad styled like a candid user post. …"
+  Not "editorial photograph of a woman…".
+- Next describe the composition literally — where the subject sits, how
+  the canvas is split, where the negative space for copy is. This should
+  echo the template's composition field in concrete terms.
+- Then subject + setting (who/what and where, grounded in the brief).
+- Then lighting + mood (from the template's mood field).
+- Then style cues (from the template's style field).
+- Palette via descriptive color language ("warm cream and forest green
+  tones"), not hex codes.
+- End with explicit keep-clear directions for the text zones in plain
+  English, e.g. "Leave the lower-left quadrant clear for copy overlay."
+  The image model renders much better when it knows the reserved regions.
+- Include negatives at the end, prefixed with "Avoid:" — concrete ones.
+- Target length: 100-200 words. The archetype specifics take room, and
+  that's fine.
+- Do NOT include the literal copy text inside prompt_text. Image models
+  are bad at rendering text — we overlay copy in post. Text zones describe
+  WHERE the copy lives, not WHAT it says, inside prompt_text.
 
 CONTENT RULES:
 
@@ -75,9 +109,11 @@ CONTENT RULES:
   mug cradled in both hands" is strong.
 - Grounding: the subject should fit the brief's audience (age, cultural
   context, life stage). No generic stock imagery.
-- Product placement: if the product is visible, keep it subtle (single
-  bottle on a surface, not hero-centered unless the concept calls for it).
-  Respect the concept's visual_direction verbatim.
+- Product placement: follow the archetype. Some archetypes hero the
+  product (stat_led_authority, educational_demystify), others hide it
+  (problem_agitation, testimonial_native, lifestyle_aspiration).
+  Don't default to "bottle centered on a surface" unless the archetype
+  calls for it.
 - Palette comes from brand.visual.palette. If brand palette is missing,
   pick 3-5 on-brand ayurvedic / wellness colors (earth tones, botanical
   greens, warm neutrals) — not primary brights.
@@ -91,9 +127,9 @@ TEXT ZONES:
   (stat-led, social-proof, data-callout concepts). Otherwise body sits in
   the feed caption and no zone is needed.
 - Disclosure: zone it only when present in the copy_block.
-- Position choice follows the concept's visual_direction + standard ad
-  grammar (product hero → text at top; before/after → split with text
-  bottom; lifestyle → text bottom-left over negative space).
+- Position choice: start from the template's zone_preferences. Only move
+  a zone if the composition demands it (e.g. a busy right side forces
+  the CTA left).
 - The "text" field must literally match the copy_block's text for that
   element — do not rewrite the copy here.
 - Do NOT invent copy elements that aren't in the copy_block.
@@ -105,19 +141,26 @@ NEGATIVE_PROMPTS (hard blocks for the image model):
 - Include standard category avoidances: "no medical/clinical coldness
   unless concept asks for it, no stock-photo smiles, no watermarks, no
   distorted hands, no text rendered in image".
+- Include archetype-specific negatives where they sharpen the ad —
+  testimonial_native: "no posed product-shoot feel, no hero-centered
+  bottle"; stat_led_authority: "no cluttered stat zone, no decorative
+  type"; problem_agitation: "no prettified pain, no over-styling".
 - Always include "no text rendered in image" — we overlay copy later.
 
 STRICTNESS:
 
-- "tight"  — visual_direction and brand.visual must be followed literally
-- "loose"  — default; interpret visual_direction with some latitude
-- "off"    — visual_direction is a guide; favor performance visual grammar
+- "tight"  — visual_direction and brand.visual must be followed literally.
+             The archetype template is still in force.
+- "loose"  — default; interpret visual_direction with some latitude, but
+             keep the archetype composition intact.
+- "off"    — visual_direction is a guide; the archetype template still
+             wins on composition and ad grammar.
 
 WILD_CARD:
 
-- When the concept carries a wild-card subversion, the visual spec should
-  execute on it (subvert composition, color, or subject in the specified
-  way). Otherwise stay on-brand.
+- When the concept carries a wild-card subversion, apply it WITHIN the
+  archetype (subvert the color, the subject's framing, or one composition
+  element). Do not throw out the archetype.
 `.trim();
 
 export function buildVisualUserMessage(args: {
@@ -144,6 +187,18 @@ export function buildVisualUserMessage(args: {
   concept: unknown;             // full ConceptStructured blob
   copy: unknown | null;         // full CopyStructured blob, or null if no copy yet
   aspect_ratio: '1:1' | '4:5' | '9:16' | '16:9' | '3:4';
+  /**
+   * Archetype template to execute. The caller resolves this via
+   * getArchetypeTemplate(concept.hook_archetype) — an unknown archetype
+   * falls back to a sturdy default template rather than throwing.
+   */
+  archetype_template: ArchetypeTemplate;
+  /**
+   * Whether the archetype lookup hit a real template (true) or fell back
+   * to the default (false). Surfaced in the prompt so Claude knows not to
+   * treat the default as an opinionated constraint.
+   */
+  archetype_matched: boolean;
 }): string {
   const parts: string[] = [];
 
@@ -203,12 +258,34 @@ export function buildVisualUserMessage(args: {
     );
   }
 
+  // The archetype block is THE most important section here. Keep it late
+  // in the message so it's the last thing Claude reads before generating.
+  const templateHeader = args.archetype_matched
+    ? `## Archetype template (EXECUTE this — it defines the ad formula)`
+    : `## Archetype template (DEFAULT — no specific formula matched; use this as a sturdy baseline)`;
+
+  parts.push(
+    `${templateHeader}\n${JSON.stringify(
+      {
+        name: args.archetype_template.name,
+        genre: args.archetype_template.genre,
+        composition: args.archetype_template.composition,
+        mood: args.archetype_template.mood,
+        style: args.archetype_template.style,
+        zone_preferences: args.archetype_template.zone_preferences,
+        grammar_note: args.archetype_template.grammar_note,
+      },
+      null,
+      2,
+    )}`,
+  );
+
   parts.push(
     `## Controls\n- ASPECT_RATIO = ${args.aspect_ratio}\n- STRICTNESS = ${args.brief.strictness}\n- WILD_CARD = ${args.brief.wild_card}`,
   );
 
   parts.push(
-    `Produce the visual spec JSON now. Set aspect_ratio to "${args.aspect_ratio}". Return ONLY the JSON object — no prose.`,
+    `Produce the visual spec JSON now. Execute the archetype template above — its composition formula drives framing, its mood drives lighting, its grammar_note is the test for "did this land as an ad." Set aspect_ratio to "${args.aspect_ratio}". Return ONLY the JSON object — no prose.`,
   );
 
   return parts.join('\n\n');

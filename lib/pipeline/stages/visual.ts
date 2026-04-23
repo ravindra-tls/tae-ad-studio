@@ -22,6 +22,7 @@ import {
   VISUAL_SYSTEM_PROMPT,
   buildVisualUserMessage,
 } from '../prompts/visual';
+import { getArchetypeTemplate } from '../templates/archetypes';
 
 const VISUAL_MODEL = 'claude-sonnet-4-20250514';
 const VISUAL_MAX_TOKENS = 2048;
@@ -86,6 +87,27 @@ export const visualStage: Stage<VisualStageArgs, VisualStageOutput> = {
       throw new Error(err);
     }
 
+    // Resolve the archetype template before we build the user message. The
+    // concept's hook_archetype is a free-form string written by the
+    // strategist; getArchetypeTemplate tolerates case/whitespace drift and
+    // falls back to DEFAULT_TEMPLATE for unknown values. Log a single warn
+    // line on miss so we see drift in the trace instead of silently serving
+    // the default.
+    const hookArchetype =
+      (conceptStructured as Record<string, unknown>).hook_archetype;
+    const archetypeResolved = getArchetypeTemplate(
+      typeof hookArchetype === 'string' ? hookArchetype : null,
+    );
+    if (!archetypeResolved.matched) {
+      console.warn(
+        `[visual] hook_archetype ${JSON.stringify(
+          hookArchetype,
+        )} did not match a template (normalized key=${JSON.stringify(
+          archetypeResolved.key,
+        )}). Falling back to DEFAULT_TEMPLATE.`,
+      );
+    }
+
     const userMessage = buildVisualUserMessage({
       brand: input.brand,
       product: {
@@ -105,6 +127,8 @@ export const visualStage: Stage<VisualStageArgs, VisualStageOutput> = {
       concept: conceptStructured,
       copy: input.copy?.structured ?? null,
       aspect_ratio: input.aspect_ratio,
+      archetype_template: archetypeResolved.template,
+      archetype_matched: archetypeResolved.matched,
     });
 
     let response: Anthropic.Message;
@@ -192,6 +216,9 @@ export const visualStage: Stage<VisualStageArgs, VisualStageOutput> = {
         aspect_ratio: input.aspect_ratio,
         prompt_length: validation.data.prompt_text.length,
         text_zone_count: validation.data.text_zones.length,
+        archetype: archetypeResolved.template.name,
+        archetype_key: archetypeResolved.key,
+        archetype_matched: archetypeResolved.matched,
       },
     });
 

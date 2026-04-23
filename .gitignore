@@ -14,3 +14,7 @@ coverage/
 
 .DS_Store
 Thumbs.db
+
+# Scratch folders — not committed
+tmp/
+docs/
