@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   // 2. Parse request
-  const { sessionId, productId, prompt, aspectRatio, referenceImageUrls, skipAssembly } = await request.json();
+  const { sessionId, productId, prompt, aspectRatio, referenceImageUrls, maskDataUrl, skipAssembly } = await request.json();
 
   if (!sessionId) {
     return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 });
@@ -69,17 +69,22 @@ export async function POST(request: Request) {
   }
 
   // 5. Create generated_image record
-  const modelId = process.env.XAI_MODEL_ID || 'grok-imagine-image';
+  // Derive provider + model from env so the DB row reflects reality.
+  const activeProvider = (process.env.IMAGE_PROVIDER || 'openai').toLowerCase();
+  const modelId =
+    activeProvider === 'xai'    ? (process.env.XAI_MODEL_ID    || 'grok-imagine-image') :
+    activeProvider === 'vertex' ? (process.env.VERTEX_AI_MODEL_ID || 'gemini-3-pro-image-preview') :
+    (process.env.OPENAI_MODEL_ID || 'gpt-image-1');
 
   const { data: genImage, error: insertError } = await serviceClient
     .from('generated_images')
     .insert({
-      session_id: sessionId,
-      prompt_used: finalPrompt,
+      session_id:   sessionId,
+      prompt_used:  finalPrompt,
       aspect_ratio: aspectRatio || '1:1',
-      api_provider: 'xai',
-      model_id: modelId,
-      status: 'queued',
+      api_provider: activeProvider === 'vertex' ? 'vertex-ai' : activeProvider,
+      model_id:     modelId,
+      status:       'queued',
     })
     .select()
     .single();
@@ -89,9 +94,10 @@ export async function POST(request: Request) {
   // 6. Call Vertex AI
   try {
     const result = await imageProvider.submitGeneration({
-      prompt: finalPrompt,
-      aspectRatio: aspectRatio || '1:1',
+      prompt:             finalPrompt,
+      aspectRatio:        aspectRatio || '1:1',
       referenceImageUrls,
+      maskDataUrl,
       modelId,
     });
 

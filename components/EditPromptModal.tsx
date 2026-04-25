@@ -234,9 +234,10 @@ export function EditPromptModal({
 
   // ── Extra reference image handling ────────────────────────────────────────
 
-  // Reserve 1 slot for the lasso mask when drawn
-  const maxExtras    = maskDataUrl ? MAX_EXTRA_REFS - 1 : MAX_EXTRA_REFS;
-  const canAddMore   = extraRefs.length < maxExtras;
+  // Mask is now sent separately (not in the refs array), so extra refs always
+  // get the full 4 slots regardless of whether a lasso selection is active.
+  const maxExtras  = MAX_EXTRA_REFS;
+  const canAddMore = extraRefs.length < maxExtras;
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).slice(0, maxExtras - extraRefs.length);
@@ -272,15 +273,13 @@ export function EditPromptModal({
     }, 20);
 
     try {
-      // Build reference list:
-      //  IMAGE_0 = original product image
-      //  IMAGE_1 = lasso mask (if drawn)
-      //  IMAGE_2+ = user extra refs
+      // Reference images: original first, then any user-added extras.
+      // The lasso mask is sent separately as `maskDataUrl` so each provider
+      // can handle it natively (OpenAI: inpainting mask; xAI: IMAGE_1 ref).
       const allRefs = [
         ...(image.image_url ? [image.image_url] : []),
-        ...(maskDataUrl     ? [maskDataUrl]      : []),
         ...extraRefs.map((r) => r.dataUrl),
-      ].slice(0, 5); // xAI hard cap
+      ].slice(0, 5); // xAI hard cap; OpenAI uses up to 4 for image[]
 
       const res = await fetch('/api/generate/submit', {
         method:  'POST',
@@ -292,6 +291,7 @@ export function EditPromptModal({
           prompt:             buildEditPrompt(change.trim(), aspectRatio, !!maskDataUrl),
           aspectRatio,
           referenceImageUrls: allRefs.length ? allRefs : undefined,
+          maskDataUrl:        maskDataUrl ?? undefined,
         }),
       });
 

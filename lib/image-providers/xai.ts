@@ -180,13 +180,20 @@ export const xai: ImageProvider = {
     const apiKey  = getApiKey();
     const modelId = getModelId(params.modelId);
 
-    // Trim references to the provider's hard ceiling. Log if we dropped any
-    // so the caller notices (better than silent truncation).
-    const allRefs = params.referenceImageUrls ?? [];
-    const refs    = allRefs.slice(0, MAX_REFERENCE_IMAGES);
+    // xAI has no native inpainting mask support. When the caller provides a
+    // lasso mask (red-fill PNG data URI), we insert it as the second reference
+    // image and rely on <IMAGE_0>/<IMAGE_1> addressing in the prompt to scope
+    // the edit spatially. The prompt is pre-built by buildEditPrompt() in
+    // EditPromptModal when maskDataUrl is present, so we just inject the ref.
+    const baseRefs = params.referenceImageUrls ?? [];
+    const allRefs  = params.maskDataUrl
+      ? [baseRefs[0], params.maskDataUrl, ...baseRefs.slice(1)].filter(Boolean) as string[]
+      : baseRefs;
+
+    const refs = allRefs.slice(0, MAX_REFERENCE_IMAGES);
     if (allRefs.length > MAX_REFERENCE_IMAGES) {
       console.warn(
-        `[xAI] ${allRefs.length} reference images provided; truncating to ${MAX_REFERENCE_IMAGES} (xAI /edits ceiling).`,
+        `[xAI] ${allRefs.length} refs (incl. mask) truncated to ${MAX_REFERENCE_IMAGES} (xAI /edits ceiling).`,
       );
     }
 
