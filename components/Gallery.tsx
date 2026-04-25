@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Images, User, Star, LayoutGrid, Layers2 } from 'lucide-react';
 import { Lightbox } from '@/components/Lightbox';
 import type { LightboxCreatorInfo } from '@/components/Lightbox';
+import { EditPromptModal } from '@/components/EditPromptModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImageCard } from '@/components/ImageCard';
 import { SwipeView } from '@/components/SwipeView';
@@ -29,6 +30,13 @@ function persistStarred(userId: string, set: Set<string>) {
 type FilterTab  = 'all' | 'mine' | 'starred';
 type ViewMode   = 'grid' | 'swipe';
 
+interface EditEntry {
+  tempId:      string;
+  realId:      string | null;
+  aspectRatio: string;
+  sourceImage: GalleryImage;
+}
+
 interface GalleryProps {
   images:        GalleryImage[];
   currentUserId: string;
@@ -42,6 +50,11 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
   const [starred,        setStarred]        = useState<Set<string>>(() => loadStarred(currentUserId));
   const [lightboxIdx,    setLightboxIdx]    = useState<number | null>(null);
   const [viewMode,       setViewMode]       = useState<ViewMode>('grid');
+  const [editingImage,   setEditingImage]   = useState<GeneratedImage | null>(null);
+  const [editEntries,    setEditEntries]    = useState<EditEntry[]>([]);
+  const [freshImages,    setFreshImages]    = useState<GalleryImage[]>([]);
+  const entriesRef = useRef<EditEntry[]>([]);
+  entriesRef.current = editEntries;
 
   const products = useMemo(() => {
     const map = new Map<string, string>();
@@ -76,6 +89,56 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
     });
     return map;
   }, [filtered]);
+
+  // ── Poll edit entries that have a real ID ─────────────────────────────────
+  useEffect(() => {
+    const pollable = editEntries.filter((e) => e.realId !== null);
+    if (pollable.length === 0) return;
+
+    const tick = async () => {
+      const current = entriesRef.current.filter((e) => e.realId !== null);
+      if (current.length === 0) return;
+
+      const results = await Promise.all(
+        current.map(async (entry) => {
+          try {
+            const res  = await fetch(`/api/generate/${entry.realId}/status`);
+            const data = await res.json();
+            return { entry, status: data.status as string, imageUrl: data.imageUrl as string | undefined };
+          } catch {
+            return { entry, status: 'unknown', imageUrl: undefined };
+          }
+        }),
+      );
+
+      const doneIds:   string[]         = [];
+      const completed: GalleryImage[]   = [];
+
+      for (const { entry, status, imageUrl } of results) {
+        if (status === 'completed' && imageUrl) {
+          completed.push({
+            ...entry.sourceImage,
+            id:           entry.realId!,
+            image_url:    imageUrl,
+            aspect_ratio: entry.aspectRatio,
+            status:       'completed',
+            created_at:   new Date().toISOString(),
+          });
+          doneIds.push(entry.tempId);
+        } else if (status === 'failed' || status === 'nsfw') {
+          doneIds.push(entry.tempId);
+        }
+      }
+
+      if (completed.length > 0) setFreshImages((prev) => [...completed, ...prev]);
+      if (doneIds.length > 0)   setEditEntries((prev) => prev.filter((e) => !doneIds.includes(e.tempId)));
+    };
+
+    const id = setInterval(tick, 2500);
+    tick();
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editEntries.filter((e) => e.realId).map((e) => e.realId).join(',')]);
 
   const toggleStar = useCallback((id: string) => {
     setStarred((prev) => {
@@ -233,20 +296,39 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((img, i) => (
+
+            {/* Edit placeholders — visible as soon as modal closes (20 ms) */}
+            {editEntries.map((entry) => (
+              <div
+                key={entry.tempId}
+                className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
+                style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
+              >
+                <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
+                  <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
+                  <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
+                </div>
+              </div>
+            ))}
+
+            {/* Fresh edit results + existing images */}
+            {[...freshImages, ...filtered].map((img, i) => (
               <ImageCard
                 key={img.id}
-                image={img}
+                image={img as unknown as GeneratedImage}
                 index={i}
                 isStarred={starred.has(img.id)}
                 onStar={() => toggleStar(img.id)}
                 onDownload={() => handleDownload(img)}
                 onOpenLightbox={() => setLightboxIdx(i)}
+                onEdit={img.session_id && (img as GalleryImage).product_id
+                  ? () => setEditingImage(img as unknown as GeneratedImage)
+                  : undefined}
                 galleryMeta={{
-                  creatorName:     img.creator_name,
-                  creatorInitials: img.creator_initials,
-                  productName:     img.product_name,
-                  productSubBrand: img.product_sub_brand,
+                  creatorName:     (img as GalleryImage).creator_name,
+                  creatorInitials: (img as GalleryImage).creator_initials,
+                  productName:     (img as GalleryImage).product_name,
+                  productSubBrand: (img as GalleryImage).product_sub_brand,
                 }}
               />
             ))}
@@ -264,6 +346,33 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
           onDownload={(img) => handleDownload(img as unknown as GalleryImage)}
           onStar={(id) => toggleStar(id)}
           isStarred={(id) => starred.has(id)}
+          onEdit={(img) => {
+            const g = img as unknown as GalleryImage;
+            if (!g.session_id || !g.product_id) return;
+            setLightboxIdx(null);
+            setEditingImage(img);
+          }}
+        />
+      )}
+
+      {/* ── Edit modal ─────────────────────────────────────────── */}
+      {editingImage && editingImage.session_id && (editingImage as unknown as GalleryImage).product_id && (
+        <EditPromptModal
+          image={editingImage}
+          sessionId={editingImage.session_id}
+          productId={(editingImage as unknown as GalleryImage).product_id!}
+          onClose={() => setEditingImage(null)}
+          onPending={(tempId, aspectRatio) => {
+            const src = editingImage as unknown as GalleryImage;
+            setEditingImage(null);
+            setEditEntries((prev) => [...prev, { tempId, realId: null, aspectRatio, sourceImage: src }]);
+          }}
+          onSubmitted={(tempId, realId) => {
+            setEditEntries((prev) => prev.map((e) => e.tempId === tempId ? { ...e, realId } : e));
+          }}
+          onFailed={(tempId) => {
+            setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
+          }}
         />
       )}
     </>

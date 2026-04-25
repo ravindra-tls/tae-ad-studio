@@ -46,16 +46,16 @@ export default async function ResultsPage({ params }: { params: { id: string } }
         ]}
         actions={
           <>
-            <Link href={`/session/${params.id}/prompts`}>
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7">
+            <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs h-7">
+              <Link href={`/session/${params.id}/prompts`}>
                 <Pencil className="h-3 w-3" /> Back to Templates
-              </Button>
-            </Link>
-            <Link href={`/session/${params.id}/prompts`}>
-              <Button size="sm" className="gap-1.5 bg-brand-forest hover:bg-brand-forest/90 text-xs h-7">
+              </Link>
+            </Button>
+            <Button asChild size="sm" className="gap-1.5 bg-brand-forest hover:bg-brand-forest/90 text-xs h-7">
+              <Link href={`/session/${params.id}/prompts`}>
                 <Plus className="h-3 w-3" /> Generate More
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </>
         }
       />
@@ -68,7 +68,12 @@ export default async function ResultsPage({ params }: { params: { id: string } }
         </p>
       </div>
 
-      <ImageGallery images={images || []} userId={user.id} />
+      <ImageGallery
+        images={images || []}
+        userId={user.id}
+        sessionId={params.id}
+        productId={session.product_id}
+      />
     </div>
   );
 }

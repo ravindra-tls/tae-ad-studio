@@ -38,23 +38,35 @@ export async function POST(request: Request) {
   }
 
   // 2. Parse request
-  const { sessionId, productId, prompt, aspectRatio, referenceImageUrls } = await request.json();
+  const { sessionId, productId, prompt, aspectRatio, referenceImageUrls, skipAssembly } = await request.json();
 
-  if (!sessionId || !productId || !prompt) {
+  if (!sessionId) {
+    return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 });
+  }
+  // skipAssembly (image edits) may send a constructed prompt — always present.
+  // Normal text-to-image requires both prompt and productId.
+  if (!skipAssembly && (!prompt || !productId)) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
+  if (skipAssembly && !prompt) {
+    return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
+  }
 
-  // 3. Get product for prompt assembly
-  const { data: product } = await serviceClient
-    .from('products')
-    .select('*')
-    .eq('id', productId)
-    .single();
+  // 3. Assemble final prompt (skip for edits that already have an assembled prompt)
+  let finalPrompt: string;
+  if (skipAssembly) {
+    finalPrompt = prompt;
+  } else {
+    const { data: product } = await serviceClient
+      .from('products')
+      .select('*')
+      .eq('id', productId)
+      .single();
 
-  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
-  // 4. Assemble final prompt
-  const finalPrompt = assemblePrompt(product, prompt, aspectRatio || '1:1');
+    finalPrompt = assemblePrompt(product, prompt, aspectRatio || '1:1');
+  }
 
   // 5. Create generated_image record
   const modelId = process.env.XAI_MODEL_ID || 'grok-imagine-image';

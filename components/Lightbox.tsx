@@ -17,7 +17,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X, ChevronLeft, ChevronRight,
-  FileText, Copy, Check, Download, Star, ArrowLeft,
+  FileText, Copy, Check, Download, Star, ArrowLeft, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GeneratedImage } from '@/types';
@@ -37,6 +37,7 @@ interface LightboxProps {
   onDownload?:  (image: GeneratedImage) => void;
   onStar?:      (imageId: string) => void;
   isStarred?:   (imageId: string) => boolean;
+  onEdit?:      (image: GeneratedImage) => void;
 }
 
 // ─── Injected styles ──────────────────────────────────────────────────────────
@@ -86,17 +87,24 @@ const LIGHTBOX_STYLES = `
   .lb-action-1 {
     opacity: 0;
     transform: translateX(8px);
-    transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+    transition: opacity 0.2s ease-out 0s, transform 0.2s ease-out 0s;
     pointer-events: none;
   }
   .lb-action-2 {
     opacity: 0;
     transform: translateX(8px);
-    transition: opacity 0.18s ease-out 0.06s, transform 0.18s ease-out 0.06s;
+    transition: opacity 0.2s ease-out 0.1s, transform 0.2s ease-out 0.1s;
+    pointer-events: none;
+  }
+  .lb-action-3 {
+    opacity: 0;
+    transform: translateX(8px);
+    transition: opacity 0.2s ease-out 0.2s, transform 0.2s ease-out 0.2s;
     pointer-events: none;
   }
   .lb-card-hover:hover .lb-action-1,
-  .lb-card-hover:hover .lb-action-2 {
+  .lb-card-hover:hover .lb-action-2,
+  .lb-card-hover:hover .lb-action-3 {
     opacity: 1;
     transform: translateX(0);
     pointer-events: auto;
@@ -120,6 +128,7 @@ export function Lightbox({
   onDownload,
   onStar,
   isStarred,
+  onEdit,
 }: LightboxProps) {
   const [index,   setIndex]   = useState(startIndex);
   const [imgKey,  setImgKey]  = useState(0);
@@ -272,18 +281,20 @@ export function Lightbox({
                   }}
                 />
 
-                {/* Download + Star — fade in from right on hover */}
+                {/* Download + Star + Edit — fade in from right on hover */}
                 {showingFront && (
                   <div className="absolute top-3 right-3 flex flex-col gap-2">
                     <button
-                      className="lb-action-1 rounded-full bg-white/90 p-2 shadow-md hover:bg-white transition-colors"
+                      data-glow=""
+                      className="lb-action-1 rounded-full bg-white/90 p-2 shadow-md transition-colors"
                       onClick={(e) => { e.stopPropagation(); onDownload?.(current); }}
                       title="Download"
                     >
                       <Download className="h-4 w-4 text-brand-forest" />
                     </button>
                     <button
-                      className="lb-action-2 rounded-full bg-white/90 p-2 shadow-md hover:bg-white transition-colors"
+                      data-glow=""
+                      className="lb-action-2 rounded-full bg-white/90 p-2 shadow-md transition-colors"
                       onClick={(e) => { e.stopPropagation(); onStar?.(current.id); }}
                       title={starred ? 'Unstar' : 'Star'}
                     >
@@ -292,13 +303,24 @@ export function Lightbox({
                         starred ? 'fill-yellow-400 text-yellow-400' : 'text-brand-forest',
                       )} />
                     </button>
+                    {onEdit && (
+                      <button
+                        data-glow=""
+                        className="lb-action-3 rounded-full bg-white/90 p-2 shadow-md transition-colors"
+                        onClick={(e) => { e.stopPropagation(); onEdit(current); }}
+                        title="Edit image"
+                      >
+                        <Pencil className="h-4 w-4 text-brand-forest" />
+                      </button>
+                    )}
                   </div>
                 )}
 
                 {/* "View Prompt" — slides up from bottom on hover */}
                 <div className="absolute bottom-0 inset-x-0 overflow-hidden rounded-b-2xl">
                   <button
-                    className="lb-prompt-btn w-full flex items-center justify-center gap-1.5 bg-brand-forest py-3 text-sm font-semibold text-white hover:bg-brand-forest/90 active:bg-brand-forest/80 transition-colors"
+                    data-glow=""
+                    className="lb-prompt-btn w-full flex items-center justify-center gap-1.5 bg-brand-forest py-3 text-sm font-semibold text-white"
                     onClick={flipToBack}
                   >
                     <FileText className="h-4 w-4" />

@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from 'react';
 import Image from 'next/image';
-import { Download, Star, FileText, Copy, Check, X } from 'lucide-react';
+import { Download, Star, FileText, Copy, Check, X, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { GeneratedImage } from '@/types';
@@ -30,6 +30,7 @@ interface ImageCardProps {
   onStar:         () => void;
   onDownload:     () => void;
   onOpenLightbox: () => void;
+  onEdit?:        () => void;
   galleryMeta?:   GalleryMeta;
   /** Hide the "View Prompt" hover button + flip (e.g. dashboard thumbnails) */
   hidePrompt?:    boolean;
@@ -44,6 +45,7 @@ export function ImageCard({
   onStar,
   onDownload,
   onOpenLightbox,
+  onEdit,
   galleryMeta,
   hidePrompt = false,
 }: ImageCardProps) {
@@ -79,36 +81,6 @@ export function ImageCard({
 
   return (
     <>
-      {/* Keyframes injected once per card — browser dedupes identical <style> blocks */}
-      <style>{`
-        @keyframes tae-flip-to-back {
-          0%  { transform: rotateY(0deg)   scale(1); }
-          45% { transform: rotateY(90deg)  scale(0.92); }
-          100%{ transform: rotateY(180deg) scale(1); }
-        }
-        @keyframes tae-flip-to-front {
-          0%  { transform: rotateY(180deg) scale(1); }
-          45% { transform: rotateY(90deg)  scale(0.92); }
-          100%{ transform: rotateY(0deg)   scale(1); }
-        }
-        .tae-flip-card   { perspective: 900px; }
-        .tae-flip-inner  { transform-style: preserve-3d; position: relative; width: 100%; height: 100%; }
-        .tae-flip-inner.is-back       { transform: rotateY(180deg); }
-        .tae-flip-inner.anim-to-back  { animation: tae-flip-to-back  0.52s ease-in-out forwards; }
-        .tae-flip-inner.anim-to-front { animation: tae-flip-to-front 0.52s ease-in-out forwards; }
-        .tae-flip-face {
-          position: absolute; inset: 0;
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
-        }
-        .tae-flip-face-back { transform: rotateY(180deg); }
-        .tae-prompt-btn {
-          transform: translateY(100%);
-          transition: transform 0.24s ease-out;
-        }
-        .tae-card-hover:hover .tae-prompt-btn { transform: translateY(0); }
-      `}</style>
-
       <div
         className="tae-flip-card tae-card-hover stagger-item"
         style={{ animationDelay: `${index * 60}ms` }}
@@ -145,15 +117,17 @@ export function ImageCard({
                 (showingBack || isAnimating) ? 'opacity-0 pointer-events-none' : 'opacity-100',
               )}>
                 <button
+                  data-glow=""
                   onClick={(e) => { e.stopPropagation(); onDownload(); }}
-                  className="rounded-full bg-white/90 p-1.5 shadow-md hover:bg-white transition-colors duration-150"
+                  className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150"
                   title="Download"
                 >
                   <Download className="h-3.5 w-3.5 text-brand-forest" />
                 </button>
                 <button
+                  data-glow=""
                   onClick={(e) => { e.stopPropagation(); onStar(); }}
-                  className="rounded-full bg-white/90 p-1.5 shadow-md hover:bg-white transition-colors duration-150"
+                  className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150"
                   title={isStarred ? 'Unstar' : 'Star'}
                 >
                   <Star className={cn(
@@ -161,6 +135,16 @@ export function ImageCard({
                     isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-brand-forest',
                   )} />
                 </button>
+                {onEdit && (
+                  <button
+                    data-glow=""
+                    onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                    className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150"
+                    title="Edit prompt & regenerate"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-brand-forest" />
+                  </button>
+                )}
               </div>
 
               {/* Bottom: View Prompt — slides in on hover (hidden when hidePrompt) */}
@@ -168,7 +152,8 @@ export function ImageCard({
                 <div className="absolute bottom-0 inset-x-0 overflow-hidden">
                   <button
                     onClick={(e) => { e.stopPropagation(); handleFlip(); }}
-                    className="tae-prompt-btn w-full flex items-center justify-center gap-1.5 bg-brand-forest py-2.5 text-xs font-semibold text-white hover:bg-brand-forest/90 transition-colors duration-150"
+                    data-glow=""
+                    className="tae-prompt-btn w-full flex items-center justify-center gap-1.5 bg-brand-forest py-2.5 text-xs font-semibold text-white transition-colors duration-150"
                   >
                     <FileText className="h-3.5 w-3.5" />
                     View Prompt
