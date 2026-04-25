@@ -5,7 +5,12 @@
  *
  * Image-to-image edit flow:
  *  - The original generated image is sent as a reference to xAI /edits.
+ *  - User can draw a lasso selection on the image to scope edits to a region.
+ *    The selection is exported as a red-fill PNG mask and sent as IMAGE_1;
+ *    the prompt uses <IMAGE_0> / <IMAGE_1> notation so the model applies the
+ *    change only within the highlighted area.
  *  - User can add up to 4 additional reference images (base64).
+ *    When a lasso mask is present the cap drops to 3 (5 xAI slots total).
  *  - User describes ONLY the change they want — empty = creative variation.
  *  - Modal closes 20 ms after clicking Generate Edit (optimistic UX).
  *    The API call continues in the background; the parent tracks its result.
@@ -20,9 +25,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import {
-  X, Loader2, AlertCircle, Wand2, ImageIcon,
+  X, Loader2, Wand2, ImageIcon,
   Square, RectangleVertical, Smartphone, Monitor, LayoutTemplate,
-  Check, Plus,
+  Check, Plus, PenLine, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +44,13 @@ const ASPECT_RATIOS = [
   { value: '3:4',  label: '3:4',  hint: 'Classic',    Icon: LayoutTemplate    },
 ];
 
-/** xAI /edits supports max 5 reference images; 1 is the original → 4 extras. */
+/**
+ * xAI /edits supports max 5 reference images total.
+ * Slot 0: original image
+ * Slot 1: lasso mask (when drawn)
+ * Slots 2–4: user extra refs
+ * So max user extras = 4 (no mask) or 3 (with mask).
+ */
 const MAX_EXTRA_REFS = 4;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -61,12 +72,42 @@ interface EditPromptModalProps {
 
 // ─── Prompt builder ──────────────────────────────────────────────────────────
 
-function buildEditPrompt(change: string, aspectRatio: string): string {
+/**
+ * hasMask=true: uses <IMAGE_0>/<IMAGE_1> addressing so the model knows the
+ * red-filled region in IMAGE_1 is the spatial scope for the edit.
+ */
+function buildEditPrompt(change: string, aspectRatio: string, hasMask: boolean): string {
   const ratioNote = `Render the output in ${aspectRatio} aspect ratio.`;
-  if (!change) {
-    return `Create a fresh creative variation of this image. You may freely vary the lighting mood, color grading, background texture, atmospheric quality, or visual energy — but keep the product, its placement, and the overall composition intact. ${ratioNote}`;
+
+  if (hasMask) {
+    if (!change) {
+      return (
+        `<IMAGE_0> is the original product image. ` +
+        `<IMAGE_1> shows the region to edit — the area filled in red is where changes may be applied. ` +
+        `Apply a subtle creative variation only within the highlighted area (you may adjust lighting, ` +
+        `texture, or color treatment there). Keep everything outside the highlighted region exactly as ` +
+        `it appears in <IMAGE_0>. ${ratioNote}`
+      );
+    }
+    return (
+      `<IMAGE_0> is the original product image. ` +
+      `<IMAGE_1> shows the region to edit — the area filled in red is where changes may be applied. ` +
+      `Make only this change: ${change}. Apply the change ONLY within the area marked red in <IMAGE_1>. ` +
+      `Everything outside the highlighted region must stay exactly the same as in <IMAGE_0>. ${ratioNote}`
+    );
   }
-  return `Make only this change: ${change}. Everything else must stay exactly the same — the product, background, lighting, composition, colors, and all graphic or text elements not mentioned. ${ratioNote}`;
+
+  if (!change) {
+    return (
+      `Create a fresh creative variation of this image. You may freely vary the lighting mood, color ` +
+      `grading, background texture, atmospheric quality, or visual energy — but keep the product, its ` +
+      `placement, and the overall composition intact. ${ratioNote}`
+    );
+  }
+  return (
+    `Make only this change: ${change}. Everything else must stay exactly the same — the product, ` +
+    `background, lighting, composition, colors, and all graphic or text elements not mentioned. ${ratioNote}`
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -75,11 +116,19 @@ export function EditPromptModal({
   image, sessionId, productId,
   onClose, onPending, onSubmitted, onFailed,
 }: EditPromptModalProps) {
-  const [mounted,     setMounted]     = useState(false);
-  const [change,      setChange]      = useState('');
-  const [aspectRatio, setAspectRatio] = useState(image.aspect_ratio || '1:1');
-  const [submitting,  setSubmitting]  = useState(false);
-  const [extraRefs,   setExtraRefs]   = useState<ExtraRef[]>([]);
+  const [mounted,      setMounted]      = useState(false);
+  const [change,       setChange]       = useState('');
+  const [aspectRatio,  setAspectRatio]  = useState(image.aspect_ratio || '1:1');
+  const [submitting,   setSubmitting]   = useState(false);
+  const [extraRefs,    setExtraRefs]    = useState<ExtraRef[]>([]);
+
+  // ── Lasso state ──────────────────────────────────────────────────────────
+  const [isLassoMode,  setIsLassoMode]  = useState(false);
+  const [maskDataUrl,  setMaskDataUrl]  = useState<string | null>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const isDrawingRef = useRef(false);
+  const lassoPtsRef  = useRef<{ x: number; y: number }[]>([]);
+
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -94,23 +143,115 @@ export function EditPromptModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, submitting]);
 
+  // ── Canvas helpers ────────────────────────────────────────────────────────
+
+  /** Lazy-init canvas resolution to match its displayed CSS size. */
+  function ensureCanvasSize() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (canvas.width !== canvas.offsetWidth || canvas.height !== canvas.offsetHeight) {
+      canvas.width  = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    }
+  }
+
+  function getCanvasPoint(e: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current!;
+    const rect   = canvas.getBoundingClientRect();
+    // Scale from CSS px → canvas internal resolution
+    return {
+      x: (e.clientX - rect.left) * (canvas.width  / rect.width),
+      y: (e.clientY - rect.top)  * (canvas.height / rect.height),
+    };
+  }
+
+  function redrawLasso(pts: { x: number; y: number }[], closed: boolean) {
+    const canvas = canvasRef.current!;
+    const ctx    = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (pts.length < 2) return;
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+
+    if (closed) {
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.28)';
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
+    ctx.lineWidth   = 2;
+    ctx.setLineDash(closed ? [] : [5, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const handleCanvasDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isLassoMode || submitting) return;
+    ensureCanvasSize();
+    isDrawingRef.current = true;
+    setMaskDataUrl(null);
+    const pt = getCanvasPoint(e);
+    lassoPtsRef.current = [pt];
+    redrawLasso([pt], false);
+  };
+
+  const handleCanvasMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    const pt = getCanvasPoint(e);
+    lassoPtsRef.current = [...lassoPtsRef.current, pt];
+    redrawLasso(lassoPtsRef.current, false);
+  };
+
+  const handleCanvasUp = useCallback(() => {
+    if (!isDrawingRef.current) return;
+    isDrawingRef.current = false;
+    const pts = lassoPtsRef.current;
+
+    if (pts.length < 6) {
+      // Too few points — treat as misclick, clear canvas
+      const canvas = canvasRef.current;
+      if (canvas) canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    redrawLasso(pts, true);
+    setMaskDataUrl(canvasRef.current!.toDataURL('image/png'));
+  }, []);
+
+  const clearMask = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (canvas) canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
+    lassoPtsRef.current = [];
+    setMaskDataUrl(null);
+  }, []);
+
+  const toggleLassoMode = useCallback(() => {
+    setIsLassoMode((prev) => !prev);
+  }, []);
+
   // ── Extra reference image handling ────────────────────────────────────────
 
+  // Reserve 1 slot for the lasso mask when drawn
+  const maxExtras    = maskDataUrl ? MAX_EXTRA_REFS - 1 : MAX_EXTRA_REFS;
+  const canAddMore   = extraRefs.length < maxExtras;
+
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []).slice(0, MAX_EXTRA_REFS - extraRefs.length);
+    const files = Array.from(e.target.files || []).slice(0, maxExtras - extraRefs.length);
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
         setExtraRefs((prev) => {
-          if (prev.length >= MAX_EXTRA_REFS) return prev;
+          if (prev.length >= maxExtras) return prev;
           return [...prev, { dataUrl: reader.result as string, name: file.name }];
         });
       };
       reader.readAsDataURL(file);
     });
-    // reset so the same file can be re-selected
     e.target.value = '';
-  }, [extraRefs.length]);
+  }, [extraRefs.length, maxExtras]);
 
   const removeExtraRef = useCallback((idx: number) => {
     setExtraRefs((prev) => prev.filter((_, i) => i !== idx));
@@ -131,8 +272,13 @@ export function EditPromptModal({
     }, 20);
 
     try {
+      // Build reference list:
+      //  IMAGE_0 = original product image
+      //  IMAGE_1 = lasso mask (if drawn)
+      //  IMAGE_2+ = user extra refs
       const allRefs = [
         ...(image.image_url ? [image.image_url] : []),
+        ...(maskDataUrl     ? [maskDataUrl]      : []),
         ...extraRefs.map((r) => r.dataUrl),
       ].slice(0, 5); // xAI hard cap
 
@@ -142,8 +288,8 @@ export function EditPromptModal({
         body: JSON.stringify({
           sessionId,
           productId,
-          skipAssembly:      true,
-          prompt:            buildEditPrompt(change.trim(), aspectRatio),
+          skipAssembly:       true,
+          prompt:             buildEditPrompt(change.trim(), aspectRatio, !!maskDataUrl),
           aspectRatio,
           referenceImageUrls: allRefs.length ? allRefs : undefined,
         }),
@@ -163,8 +309,6 @@ export function EditPromptModal({
   };
 
   if (!mounted) return null;
-
-  const canAddMore = extraRefs.length < MAX_EXTRA_REFS;
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -189,9 +333,16 @@ export function EditPromptModal({
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-brand-sage/40 text-brand-slate bg-brand-cream/60 font-medium">
                 Image-to-Image
               </Badge>
+              {maskDataUrl && (
+                <Badge className="text-[10px] px-1.5 py-0 bg-red-500/10 text-red-600 border-red-200 font-medium">
+                  Area selected
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-brand-slate/55">
-              Describe your change — leave empty for a clean variation
+              {isLassoMode
+                ? 'Click and drag on the image to select the area to edit'
+                : 'Describe your change — leave empty for a clean variation'}
             </p>
           </div>
           <button
@@ -206,21 +357,91 @@ export function EditPromptModal({
         {/* ── Scrollable body ─────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 pb-5 space-y-4">
 
-          {/* Original reference image */}
+          {/* Reference image + lasso canvas */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-brand-navy">Reference Image</span>
-              {image.aspect_ratio && (
-                <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">
-                  {image.aspect_ratio}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {image.aspect_ratio && (
+                  <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">
+                    {image.aspect_ratio}
+                  </span>
+                )}
+              </div>
             </div>
 
             {image.image_url ? (
-              <div className="relative w-full h-52 rounded-xl overflow-hidden border border-brand-sage/20 bg-brand-forest/10">
-                <Image src={image.image_url} alt="Reference image" fill className="object-contain" sizes="576px" />
-              </div>
+              <>
+                {/* Image + canvas overlay */}
+                <div className="relative w-full h-52 rounded-xl overflow-hidden border border-brand-sage/20 bg-brand-forest/10 select-none">
+                  <Image
+                    src={image.image_url}
+                    alt="Reference image"
+                    fill
+                    className="object-contain"
+                    sizes="576px"
+                    draggable={false}
+                  />
+
+                  {/* Lasso canvas — always rendered so the drawn mask persists across mode toggles */}
+                  <canvas
+                    ref={canvasRef}
+                    className="absolute inset-0 w-full h-full rounded-xl"
+                    style={{
+                      cursor:        isLassoMode ? 'crosshair' : 'default',
+                      pointerEvents: isLassoMode ? 'all' : 'none',
+                    }}
+                    onMouseDown={handleCanvasDown}
+                    onMouseMove={handleCanvasMove}
+                    onMouseUp={handleCanvasUp}
+                    onMouseLeave={handleCanvasUp}
+                  />
+
+                  {/* Lasso mode hint overlay */}
+                  {isLassoMode && !maskDataUrl && (
+                    <div className="absolute inset-x-0 bottom-0 pb-3 flex justify-center pointer-events-none">
+                      <span className="text-[10px] bg-black/60 text-white px-2.5 py-1 rounded-full font-medium">
+                        Click and drag to draw selection
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Lasso toolbar */}
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={toggleLassoMode}
+                    disabled={submitting}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-all',
+                      'disabled:opacity-40 disabled:cursor-not-allowed',
+                      isLassoMode
+                        ? 'border-red-300 bg-red-50 text-red-600 shadow-sm'
+                        : 'border-brand-sage/30 text-brand-slate hover:border-brand-forest/30 hover:text-brand-forest hover:bg-brand-cream/60',
+                    )}
+                  >
+                    <PenLine className="h-3.5 w-3.5" />
+                    {isLassoMode ? 'Drawing mode on' : 'Select area to edit'}
+                  </button>
+
+                  {maskDataUrl && (
+                    <button
+                      onClick={clearMask}
+                      disabled={submitting}
+                      className="flex items-center gap-1 text-xs text-brand-slate/50 hover:text-red-500 transition-colors disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Clear selection
+                    </button>
+                  )}
+
+                  {!maskDataUrl && !isLassoMode && (
+                    <span className="text-[10px] text-brand-slate/40">
+                      Optional — draw to limit the edit to a specific area
+                    </span>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="w-full rounded-xl border border-dashed border-brand-sage/30 bg-brand-cream/40 flex items-center justify-center py-8">
                 <div className="text-center">
@@ -236,7 +457,7 @@ export function EditPromptModal({
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-brand-navy">Additional References</span>
               <span className="text-[10px] text-brand-slate/40">
-                {extraRefs.length}/{MAX_EXTRA_REFS} · Optional
+                {extraRefs.length}/{maxExtras} · Optional
               </span>
             </div>
 
@@ -304,10 +525,16 @@ export function EditPromptModal({
                 'focus:outline-none focus:border-brand-forest/40 focus:bg-white',
                 'transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
               )}
-              placeholder="Describe the change you want… e.g. warmer background, add soft bokeh, change surface to wood, make it more dramatic"
+              placeholder={
+                maskDataUrl
+                  ? 'Describe the change for the selected area… e.g. make it warmer, add bokeh, change to wood grain'
+                  : 'Describe the change you want… e.g. warmer background, add soft bokeh, change surface to wood, make it more dramatic'
+              }
             />
             <p className="mt-1.5 text-[10px] text-brand-slate/40">
-              Leave empty to generate a creative variation of this image
+              {maskDataUrl
+                ? 'Edit will be applied only within your selection'
+                : 'Leave empty to generate a creative variation of this image'}
             </p>
           </div>
 
