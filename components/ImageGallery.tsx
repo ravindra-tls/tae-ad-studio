@@ -172,7 +172,7 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
                     style={{ aspectRatio: item.entry.aspectRatio.replace(':', '/') }}
                   >
                     <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-brand-forest">
-                      <AnalyzingImage className="size-20 opacity-80" />
+                      <AnalyzingImage />
                       <p className="text-xs text-brand-slate/60 font-medium tracking-wide">Generating edit…</p>
                     </div>
                   </div>
@@ -196,17 +196,15 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
                 return (
                   <div
                     key={item.image.id}
-                    className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30"
+                    className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
                     style={{
                       aspectRatio: (item.image.aspect_ratio || '1:1').replace(':', '/'),
                       animationDelay: `${item.globalIdx * 60}ms`,
                     }}
                   >
-                    <div className="w-full h-full flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-forest border-t-transparent mx-auto mb-2" />
-                        <p className="text-sm text-brand-slate capitalize">{item.image.status}…</p>
-                      </div>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-brand-forest">
+                      <AnalyzingImage />
+                      <p className="text-xs text-brand-slate/60 font-medium tracking-wide capitalize">{item.image.status}…</p>
                     </div>
                   </div>
                 );

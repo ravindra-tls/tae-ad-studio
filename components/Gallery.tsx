@@ -8,6 +8,7 @@ import { EditPromptModal } from '@/components/EditPromptModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImageCard } from '@/components/ImageCard';
 import { SwipeView } from '@/components/SwipeView';
+import { AnalyzingImage } from '@/components/AnalyzingImage';
 import { cn, downloadImage } from '@/lib/utils';
 import type { GalleryImage, GeneratedImage } from '@/types';
 
@@ -186,9 +187,15 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
   // Then distribute left-to-right into N columns via index % numCols so each
   // column is an independent flex stack with no inter-row gap coupling.
 
+  // Deduplicate: freshImages take priority over server-fetched filtered list.
+  // This prevents duplicates when a newly-generated image appears in both
+  // freshImages (client state) and the images prop (server re-render / router refresh).
+  const freshIds = new Set(freshImages.map((img) => img.id));
+  const dedupedFiltered = filtered.filter((img) => !freshIds.has(img.id));
+
   const galleryAllItems: GalleryColItem[] = [
     ...editEntries.map((entry) => ({ kind: 'edit' as const, entry })),
-    ...[...freshImages, ...filtered].map((img, i) => ({
+    ...[...freshImages, ...dedupedFiltered].map((img, i) => ({
       kind:    'image' as const,
       img,
       colIdx:  editEntries.length + i,   // used for stagger animation + lightbox index
@@ -341,9 +348,9 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
                         className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
                         style={{ aspectRatio: item.entry.aspectRatio.replace(':', '/') }}
                       >
-                        <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
-                          <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
-                          <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-brand-forest">
+                          <AnalyzingImage />
+                          <p className="text-xs text-brand-slate/60 font-medium tracking-wide">Generating edit…</p>
                         </div>
                       </div>
                     );
@@ -407,8 +414,30 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
             setEditingImage(null);
             setEditEntries((prev) => [...prev, { tempId, realId: null, aspectRatio, sourceImage: src }]);
           }}
-          onSubmitted={(tempId, realId) => {
-            setEditEntries((prev) => prev.map((e) => e.tempId === tempId ? { ...e, realId } : e));
+          onSubmitted={(tempId, realId, imageUrl) => {
+            if (imageUrl) {
+              // Synchronous provider (xAI / OpenAI) — imageUrl is available immediately.
+              // Inject directly into freshImages and skip polling entirely.
+              const entry = entriesRef.current.find((e) => e.tempId === tempId);
+              if (entry) {
+                setFreshImages((prev) => {
+                  // Guard against StrictMode double-invocation
+                  if (prev.some((img) => img.id === realId)) return prev;
+                  return [{
+                    ...entry.sourceImage,
+                    id:           realId,
+                    image_url:    imageUrl,
+                    aspect_ratio: entry.aspectRatio,
+                    status:       'completed' as const,
+                    created_at:   new Date().toISOString(),
+                  }, ...prev];
+                });
+              }
+              setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
+            } else {
+              // Async provider (Vertex AI etc.) — set realId and let polling resolve it.
+              setEditEntries((prev) => prev.map((e) => e.tempId === tempId ? { ...e, realId } : e));
+            }
           }}
           onFailed={(tempId) => {
             setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));

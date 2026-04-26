@@ -488,12 +488,4 @@
   animation: edit-arrive 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-/* ── AnalyzingImage scan sweep ───────────────────────────────────────────── */
-@keyframes analyzing-scan {
-  0%   { transform: translateY(0px);   }
-  50%  { transform: translateY(60px);  }
-  100% { transform: translateY(0px);   }
-}
-.analyzing-scan-line {
-  animation: analyzing-scan 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
+/* AnalyzingImage uses pure SVG <animate> — no CSS class needed */
