@@ -427,3 +427,14 @@
   transition: transform 0.24s ease-out;
 }
 .tae-card-hover:hover .tae-prompt-btn { transform: translateY(0); }
+
+/* ── Edit placeholder arrive animation ───────────────────────────────────── */
+@keyframes edit-arrive {
+  0%   { opacity: 0; transform: scale(0.08) translate(-38vw, -45vh); }
+  60%  { opacity: 1; transform: scale(1.04) translate(0, 0); }
+  80%  { transform: scale(0.97); }
+  100% { opacity: 1; transform: scale(1) translate(0, 0); }
+}
+.animate-edit-arrive {
+  animation: edit-arrive 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}

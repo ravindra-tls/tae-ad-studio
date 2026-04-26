@@ -127,6 +127,7 @@ export function EditPromptModal({
   const [change,      setChange]      = useState('');
   const [aspectRatio, setAspectRatio] = useState(image.aspect_ratio || '1:1');
   const [submitting,  setSubmitting]  = useState(false);
+  const [launching,   setLaunching]   = useState(false);   // morph-out animation
   const [extraRefs,   setExtraRefs]   = useState<ExtraRef[]>([]);
   const [regions,     setRegions]     = useState<LassoRegion[]>([]);
 
@@ -382,17 +383,22 @@ export function EditPromptModal({
   // ── Submit ────────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
-    if (submitting) return;
-    setSubmitting(true);
+    if (submitting || launching) return;
 
     const tempId        = crypto.randomUUID();
     const compositeMask = buildCompositeMask();
 
-    const closeTimer = setTimeout(() => {
-      onPending(tempId, aspectRatio);
-      onClose();
-    }, 20);
+    // ① Kick off the morph-out animation immediately
+    setLaunching(true);
+    setSubmitting(true);
 
+    // ② After the CSS transition (450 ms) — collapse into placeholder
+    const morphTimer = setTimeout(() => {
+      onPending(tempId, aspectRatio);   // parent: add placeholder + scroll to top
+      onClose();                         // unmount modal
+    }, 450);
+
+    // ③ Fire the API call in parallel — no blocking
     try {
       const allRefs = [
         ...(image.image_url ? [image.image_url] : []),
@@ -421,7 +427,10 @@ export function EditPromptModal({
       const { generatedImageId } = await res.json();
       onSubmitted(tempId, generatedImageId);
     } catch {
-      clearTimeout(closeTimer);
+      // If the API fails, cancel the morph and show error state
+      clearTimeout(morphTimer);
+      setLaunching(false);
+      setSubmitting(false);
       onFailed(tempId);
     }
   };
@@ -701,15 +710,22 @@ export function EditPromptModal({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+      {/* Backdrop — fades out when launching */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className={cn(
+          'absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-500',
+          launching && 'opacity-0 pointer-events-none',
+        )}
         onClick={!submitting ? onClose : undefined}
       />
 
-      {/* Panel — wider than before to support two-column layout */}
+      {/* Panel — morphs into a tiny card flying to top-left on launch */}
       <div
-        className="relative w-full sm:max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className={cn(
+          'relative w-full sm:max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden',
+          'transition-all duration-[450ms] ease-in-out',
+          launching && 'scale-[0.08] opacity-0 -translate-y-[45vh] translate-x-[-38vw] rounded-xl',
+        )}
         style={{ maxHeight: '88vh' }}
         onClick={(e) => e.stopPropagation()}
       >

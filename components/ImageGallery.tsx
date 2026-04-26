@@ -167,7 +167,7 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
                 return (
                   <div
                     key={item.key}
-                    className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
+                    className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden animate-edit-arrive"
                     style={{ aspectRatio: item.entry.aspectRatio.replace(':', '/') }}
                   >
                     <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
@@ -264,6 +264,8 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
           productId={productId}
           onClose={() => setEditingImage(null)}
           onPending={(tempId, aspectRatio) => {
+            // Scroll to top so the incoming placeholder is visible when the modal morphs away
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             setEditingImage(null);
             setEditEntries((prev) => [...prev, { tempId, realId: null, aspectRatio, sourceImage: editingImage }]);
           }}
