@@ -295,44 +295,42 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
             </p>
           </div>
         ) : (
-          <div className="columns-2 lg:columns-3 gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 items-start">
 
             {/* Edit placeholders */}
             {editEntries.map((entry) => (
-              <div key={entry.tempId} className="break-inside-avoid mb-5">
-                <div
-                  className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
-                  style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
-                >
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
-                    <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
-                    <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
-                  </div>
+              <div
+                key={entry.tempId}
+                className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
+                style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
+              >
+                <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
+                  <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
+                  <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
                 </div>
               </div>
             ))}
 
             {/* Fresh edit results + existing images */}
             {[...freshImages, ...filtered].map((img, i) => (
-              <div key={img.id} className="break-inside-avoid mb-5">
-                <ImageCard
-                  image={img as unknown as GeneratedImage}
-                  index={i}
-                  isStarred={starred.has(img.id)}
-                  onStar={() => toggleStar(img.id)}
-                  onDownload={() => handleDownload(img)}
-                  onOpenLightbox={() => setLightboxIdx(i)}
-                  onEdit={img.session_id && (img as GalleryImage).product_id
-                    ? () => setEditingImage(img as unknown as GeneratedImage)
-                    : undefined}
-                  galleryMeta={{
-                    creatorName:     (img as GalleryImage).creator_name,
-                    creatorInitials: (img as GalleryImage).creator_initials,
-                    productName:     (img as GalleryImage).product_name,
-                    productSubBrand: (img as GalleryImage).product_sub_brand,
-                  }}
-                />
-              </div>
+              <ImageCard
+                key={img.id}
+                image={img as unknown as GeneratedImage}
+                index={i}
+                isStarred={starred.has(img.id)}
+                onStar={() => toggleStar(img.id)}
+                onDownload={() => handleDownload(img)}
+                onOpenLightbox={() => setLightboxIdx(i)}
+                onEdit={img.session_id && (img as GalleryImage).product_id
+                  ? () => setEditingImage(img as unknown as GeneratedImage)
+                  : undefined}
+                galleryMeta={{
+                  creatorName:     (img as GalleryImage).creator_name,
+                  creatorInitials: (img as GalleryImage).creator_initials,
+                  productName:     (img as GalleryImage).product_name,
+                  productSubBrand: (img as GalleryImage).product_sub_brand,
+                }}
+              />
             ))}
           </div>
         )

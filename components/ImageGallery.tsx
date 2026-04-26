@@ -132,54 +132,51 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
 
   return (
     <>
-      {/* Pinterest-style masonry — images at natural aspect ratio */}
-      <div className="columns-2 lg:columns-3 gap-5">
+      {/* Left-to-right grid, each image at its natural aspect ratio */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 items-start">
 
         {/* Edit placeholders */}
         {editEntries.map((entry) => (
-          <div key={entry.tempId} className="break-inside-avoid mb-5">
-            <div
-              className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
-              style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
-            >
-              <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
-                <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
-                <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
-              </div>
+          <div
+            key={entry.tempId}
+            className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
+            style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
+          >
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
+              <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
+              <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
             </div>
           </div>
         ))}
 
         {/* Completed */}
         {completedImages.map((image, i) => (
-          <div key={image.id} className="break-inside-avoid mb-5">
-            <ImageCard
-              image={image}
-              index={i}
-              isStarred={starred.has(image.id)}
-              onStar={() => toggleStar(image.id)}
-              onDownload={() => handleDownload(image)}
-              onOpenLightbox={() => setLightboxIdx(i)}
-              onEdit={sessionId && productId ? () => setEditingImage(image) : undefined}
-            />
-          </div>
+          <ImageCard
+            key={image.id}
+            image={image}
+            index={i}
+            isStarred={starred.has(image.id)}
+            onStar={() => toggleStar(image.id)}
+            onDownload={() => handleDownload(image)}
+            onOpenLightbox={() => setLightboxIdx(i)}
+            onEdit={sessionId && productId ? () => setEditingImage(image) : undefined}
+          />
         ))}
 
         {/* Pending */}
         {pendingImages.map((image, i) => (
-          <div key={image.id} className="break-inside-avoid mb-5">
-            <div
-              className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30"
-              style={{
-                aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/'),
-                animationDelay: `${(completedImages.length + i) * 60}ms`,
-              }}
-            >
-              <div className="w-full h-full flex items-center justify-center">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-forest border-t-transparent mx-auto mb-2" />
-                  <p className="text-sm text-brand-slate capitalize">{image.status}…</p>
-                </div>
+          <div
+            key={image.id}
+            className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30"
+            style={{
+              aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/'),
+              animationDelay: `${(completedImages.length + i) * 60}ms`,
+            }}
+          >
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-forest border-t-transparent mx-auto mb-2" />
+                <p className="text-sm text-brand-slate capitalize">{image.status}…</p>
               </div>
             </div>
           </div>
@@ -187,26 +184,25 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
 
         {/* Failed */}
         {failedImages.map((image, i) => (
-          <div key={image.id} className="break-inside-avoid mb-5">
-            <div
-              className="stagger-item rounded-xl border border-red-200 bg-red-50"
-              style={{
-                aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/'),
-                animationDelay: `${(completedImages.length + pendingImages.length + i) * 60}ms`,
-              }}
-            >
-              <div className="w-full h-full flex items-center justify-center p-4">
-                <div className="text-center">
-                  <Badge variant="destructive" className="mb-2">
-                    {image.status === 'nsfw' ? 'Content Blocked' : 'Failed'}
-                  </Badge>
-                  <p className="text-xs text-gray-500 mb-3">{image.error_message || 'Generation failed'}</p>
-                  {onRegenerate && (
-                    <Button size="sm" variant="outline" onClick={() => onRegenerate(image)}>
-                      <RefreshCw className="mr-1 h-3 w-3" /> Retry
-                    </Button>
-                  )}
-                </div>
+          <div
+            key={image.id}
+            className="stagger-item rounded-xl border border-red-200 bg-red-50"
+            style={{
+              aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/'),
+              animationDelay: `${(completedImages.length + pendingImages.length + i) * 60}ms`,
+            }}
+          >
+            <div className="w-full h-full flex items-center justify-center p-4">
+              <div className="text-center">
+                <Badge variant="destructive" className="mb-2">
+                  {image.status === 'nsfw' ? 'Content Blocked' : 'Failed'}
+                </Badge>
+                <p className="text-xs text-gray-500 mb-3">{image.error_message || 'Generation failed'}</p>
+                {onRegenerate && (
+                  <Button size="sm" variant="outline" onClick={() => onRegenerate(image)}>
+                    <RefreshCw className="mr-1 h-3 w-3" /> Retry
+                  </Button>
+                )}
               </div>
             </div>
           </div>
