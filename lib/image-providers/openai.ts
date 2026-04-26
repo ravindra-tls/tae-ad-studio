@@ -24,7 +24,7 @@ import type { GenerateParams, GenerateResult, ImageProvider, StatusResult } from
 
 const OPENAI_GENERATIONS_URL = 'https://api.openai.com/v1/images/generations';
 const OPENAI_EDITS_URL       = 'https://api.openai.com/v1/images/edits';
-const DEFAULT_MODEL          = 'gpt-image-2';
+const DEFAULT_MODEL          = 'gpt-image-1.5';
 
 /**
  * gpt-image-1 supported output sizes (as of April 2026).
@@ -129,7 +129,7 @@ async function submitGenerations(
     n:               1,
     size,
     quality:         'high',
-    output_format:   'png',
+    response_format: 'b64_json',
   };
 
   console.log(`[OpenAI] /generations, size=${size}, prompt_len=${params.prompt.length}`);
@@ -155,11 +155,13 @@ async function submitEdits(
   const refs = params.referenceImageUrls ?? [];
 
   const formData = new FormData();
-  formData.append('model',   modelId);
-  formData.append('prompt',  params.prompt);
-  formData.append('n',       '1');
-  formData.append('size',    size);
-  formData.append('quality', 'high');
+  formData.append('model',            modelId);
+  formData.append('prompt',           params.prompt);
+  formData.append('n',                '1');
+  formData.append('size',             size);
+  formData.append('quality',          'high');
+  formData.append('response_format',  'b64_json');
+  formData.append('input_fidelity',   'high');  // higher detail for precise edits
 
   // Fetch and attach reference image(s)
   // gpt-image-1 edits accepts multiple images via `image[]`
