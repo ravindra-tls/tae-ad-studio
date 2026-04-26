@@ -135,7 +135,9 @@ export function EditPromptModal({
 
   // Refs that don't need renders
   const canvasRef      = useRef<HTMLCanvasElement>(null);
-  const panelRef       = useRef<HTMLDivElement>(null);
+  const panelRef       = useRef<HTMLDivElement>(null);   // animation shell
+  const innerPanelRef  = useRef<HTMLDivElement>(null);   // card face (flip)
+  const backdropRef    = useRef<HTMLDivElement>(null);   // dim overlay
   const regionsRef     = useRef<LassoRegion[]>([]);
   const activePtsRef   = useRef<Pt[]>([]);
   const isDrawingRef   = useRef(false);
@@ -405,17 +407,70 @@ export function EditPromptModal({
     const tempId        = crypto.randomUUID();
     const compositeMask = buildCompositeMask();
 
-    // ① Kick off the morph-out animation immediately
     setLaunching(true);
     setSubmitting(true);
 
-    // ② After the keyframe animation (900 ms) — collapse into placeholder
-    const morphTimer = setTimeout(() => {
-      onPending(tempId, aspectRatio);   // parent: add placeholder + scroll to top
-      onClose();                         // unmount modal
-    }, 900);
+    // ─── WAAPI animation — bypasses CSS @keyframe lookup entirely ──────────
+    // CSS keyframes applied via inline `animation:` on portalled elements are
+    // silently dropped in Next.js. WAAPI is guaranteed to fire on the element.
+    //
+    // We use getBoundingClientRect() so the translate targets real pixels —
+    // vw/vh values were wrong because the modal is flex-centered, making
+    // "translate(-40vw)" move relative to center, not to the corner.
+    const ANIM_MS = 1000;
+    const shell    = panelRef.current;
+    const face     = innerPanelRef.current;
+    const backdrop = backdropRef.current;
 
-    // ③ Fire the API call in parallel — no blocking
+    if (shell) {
+      const r  = shell.getBoundingClientRect();
+      const cx = r.left + r.width  / 2;   // modal center X
+      const cy = r.top  + r.height / 2;   // modal center Y
+
+      // Target: top-left of the gallery content area
+      // (280px = sidebar width + some padding; 80px = header + padding)
+      const tx = 310 - cx;
+      const ty =  90 - cy;
+
+      // Shell: flies to corner, shrinks, rotates
+      shell.animate(
+        [
+          { transform: 'scale(1) translate(0px, 0px) rotate(0deg)',                                   opacity: 1   },
+          { transform: `scale(0.88) translate(${tx*0.06}px,${ty*0.06}px) rotate(-5deg)`,              opacity: 1,   offset: 0.10 },
+          { transform: `scale(0.42) translate(${tx*0.38}px,${ty*0.38}px) rotate(-18deg)`,             opacity: 0.9, offset: 0.38 },
+          { transform: `scale(0.14) translate(${tx*0.72}px,${ty*0.72}px) rotate(-36deg)`,             opacity: 0.5, offset: 0.68 },
+          { transform: `scale(0.05) translate(${tx}px,${ty}px) rotate(-52deg)`,                       opacity: 0   },
+        ],
+        { duration: ANIM_MS, easing: 'cubic-bezier(0.55, 0.02, 0.9, 0.4)', fill: 'forwards' },
+      );
+
+      // Inner face: flip on Y axis (pure rotation, no translate — so overflow:hidden stays fine)
+      face?.animate(
+        [
+          { transform: 'rotateY(0deg)   scaleX(1)'   },
+          { transform: 'rotateY(-30deg) scaleX(0.94)', offset: 0.15 },
+          { transform: 'rotateY(-90deg) scaleX(0.02)', offset: 0.40 },  // card goes edge-on
+          { transform: 'rotateY(-180deg) scaleX(0.02)', offset: 0.55 },
+          { transform: 'rotateY(-290deg) scaleX(0.6)',  offset: 0.80 },
+          { transform: 'rotateY(-360deg) scaleX(0.05)' },
+        ],
+        { duration: ANIM_MS, easing: 'cubic-bezier(0.55, 0.02, 0.9, 0.4)', fill: 'forwards' },
+      );
+
+      // Backdrop: fades out gently
+      backdrop?.animate(
+        [{ opacity: 1 }, { opacity: 0 }],
+        { duration: ANIM_MS * 0.7, easing: 'ease-out', fill: 'forwards' },
+      );
+    }
+
+    // ── After animation completes → hand off to gallery ───────────────────
+    const morphTimer = setTimeout(() => {
+      onPending(tempId, aspectRatio);   // parent adds placeholder
+      onClose();                         // unmount modal
+    }, ANIM_MS);
+
+    // ── API call runs in parallel ─────────────────────────────────────────
     try {
       const allRefs = [
         ...(image.image_url ? [image.image_url] : []),
@@ -444,8 +499,11 @@ export function EditPromptModal({
       const { generatedImageId } = await res.json();
       onSubmitted(tempId, generatedImageId);
     } catch {
-      // If the API fails, cancel the morph and show error state
+      // API failed — cancel animation + morph timer, restore normal state
       clearTimeout(morphTimer);
+      panelRef.current?.getAnimations().forEach((a) => a.cancel());
+      innerPanelRef.current?.getAnimations().forEach((a) => a.cancel());
+      backdropRef.current?.getAnimations().forEach((a) => a.cancel());
       setLaunching(false);
       setSubmitting(false);
       onFailed(tempId);
@@ -739,39 +797,32 @@ export function EditPromptModal({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop — fades out when launching */}
+      {/* Backdrop — WAAPI fades it; pointer-events off once launching */}
       <div
+        ref={backdropRef}
         className={cn(
-          'absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-[700ms]',
-          launching && 'opacity-0 pointer-events-none',
+          'absolute inset-0 bg-black/50 backdrop-blur-sm',
+          launching && 'pointer-events-none',
         )}
         onClick={!submitting ? onClose : undefined}
       />
 
       {/*
-        Animation shell — NO overflow:hidden here so transform is never clipped.
-        This div handles all spatial movement: fly to corner + scale + rotate.
-        overflow:hidden on a transformed element creates a stacking context that
-        silently kills perspective/rotateY, so we keep the two concerns separated.
+        Animation shell — no overflow:hidden so transforms are never clipped.
+        WAAPI animates this: scale + translate to top-left corner + rotate.
+        Inner panel gets the Y-axis flip separately via innerPanelRef.
       */}
       <div
         ref={panelRef}
         className="relative w-full sm:max-w-2xl"
-        style={{
-          transformOrigin: 'center center',
-          willChange: 'transform, opacity',
-          animation: launching ? 'modal-launch 0.9s cubic-bezier(0.6, 0, 0.9, 0.5) forwards' : 'none',
-        }}
+        style={{ transformOrigin: 'center center', willChange: 'transform, opacity' }}
         onClick={(e) => e.stopPropagation()}
       >
-      {/* Inner panel — keeps overflow:hidden for design; gets the flip animation */}
+      {/* Inner card face — WAAPI rotates on Y axis for flip effect */}
       <div
+        ref={innerPanelRef}
         className="relative w-full bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{
-          maxHeight: '88vh',
-          transformOrigin: 'center center',
-          animation: launching ? 'modal-panel-flip 0.9s cubic-bezier(0.6, 0, 0.9, 0.5) forwards' : 'none',
-        }}
+        style={{ maxHeight: '88vh', transformOrigin: 'center center' }}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between px-5 pt-5 pb-4 shrink-0">

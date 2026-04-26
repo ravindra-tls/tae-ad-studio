@@ -264,8 +264,9 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
           productId={productId}
           onClose={() => setEditingImage(null)}
           onPending={(tempId, aspectRatio) => {
-            // Scroll to top so the incoming placeholder is visible when the modal morphs away
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Note: do NOT window.scrollTo here — it triggers Next.js scroll restoration
+            // which blanks the gallery for several seconds. The placeholder renders at
+            // the top of the masonry naturally (editEntries always render first).
             setEditingImage(null);
             setEditEntries((prev) => [...prev, { tempId, realId: null, aspectRatio, sourceImage: editingImage }]);
           }}
