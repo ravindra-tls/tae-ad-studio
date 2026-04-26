@@ -1,24 +1,20 @@
 'use client';
 
 /**
- * EditPromptModal
+ * EditPromptModal — multi-region lasso edit flow
  *
- * Image-to-image edit flow:
- *  - The original generated image is sent as a reference to xAI /edits.
- *  - User can draw a lasso selection on the image to scope edits to a region.
- *    The selection is exported as a red-fill PNG mask and sent as IMAGE_1;
- *    the prompt uses <IMAGE_0> / <IMAGE_1> notation so the model applies the
- *    change only within the highlighted area.
- *  - User can add up to 4 additional reference images (base64).
- *    When a lasso mask is present the cap drops to 3 (5 xAI slots total).
- *  - User describes ONLY the change they want — empty = creative variation.
- *  - Modal closes 20 ms after clicking Generate Edit (optimistic UX).
- *    The API call continues in the background; the parent tracks its result.
+ * User draws freehand lasso regions on the image. Each region gets a colored
+ * numbered pin. A Figma-style description bubble appears next to the pin;
+ * after 2 s of inactivity the bubble collapses into the pin and its description
+ * is synced to the main prompt box. Clicking a pin re-expands its bubble.
  *
- * Callbacks:
- *  onPending(tempId, aspectRatio)   — fired at 20 ms → parent shows placeholder card
- *  onSubmitted(tempId, realId)      — fired when API responds  → parent starts polling
- *  onFailed(tempId)                 — fired on API error       → parent removes placeholder
+ * On Generate: a composite mask covering all drawn regions is sent with the
+ * combined prompt so the model edits only within the selected areas.
+ *
+ * Callbacks (unchanged):
+ *  onPending(tempId, aspectRatio)   — 20 ms after submit → parent shows placeholder
+ *  onSubmitted(tempId, realId)      — API responds → parent starts polling
+ *  onFailed(tempId)                 — API error → parent removes placeholder
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -27,7 +23,7 @@ import Image from 'next/image';
 import {
   X, Loader2, Wand2, ImageIcon,
   Square, RectangleVertical, Smartphone, Monitor, LayoutTemplate,
-  Check, Plus, PenLine, Trash2,
+  Check, Plus, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,23 +33,40 @@ import type { GeneratedImage } from '@/types';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ASPECT_RATIOS = [
-  { value: '1:1',  label: '1:1',  hint: 'Square',    Icon: Square            },
-  { value: '4:5',  label: '4:5',  hint: 'Portrait',  Icon: RectangleVertical },
-  { value: '9:16', label: '9:16', hint: 'Story',      Icon: Smartphone        },
-  { value: '16:9', label: '16:9', hint: 'Landscape',  Icon: Monitor           },
-  { value: '3:4',  label: '3:4',  hint: 'Classic',    Icon: LayoutTemplate    },
+  { value: '1:1',  label: '1:1',  hint: 'Square',   Icon: Square            },
+  { value: '4:5',  label: '4:5',  hint: 'Portrait', Icon: RectangleVertical },
+  { value: '9:16', label: '9:16', hint: 'Story',     Icon: Smartphone        },
+  { value: '16:9', label: '16:9', hint: 'Landscape', Icon: Monitor           },
+  { value: '3:4',  label: '3:4',  hint: 'Classic',   Icon: LayoutTemplate    },
 ];
 
-/**
- * xAI /edits supports max 5 reference images total.
- * Slot 0: original image
- * Slot 1: lasso mask (when drawn)
- * Slots 2–4: user extra refs
- * So max user extras = 4 (no mask) or 3 (with mask).
- */
 const MAX_EXTRA_REFS = 4;
+const MAX_REGIONS    = 5;
+
+/** One color per region, cycling if somehow exceeded. */
+const REGION_COLORS = [
+  { stroke: '#ef4444', fill: 'rgba(239,68,68,0.18)',  pin: 'bg-red-500'    },
+  { stroke: '#3b82f6', fill: 'rgba(59,130,246,0.18)', pin: 'bg-blue-500'   },
+  { stroke: '#22c55e', fill: 'rgba(34,197,94,0.18)',  pin: 'bg-green-500'  },
+  { stroke: '#f97316', fill: 'rgba(249,115,22,0.18)', pin: 'bg-orange-500' },
+  { stroke: '#a855f7', fill: 'rgba(168,85,247,0.18)', pin: 'bg-purple-500' },
+] as const;
+
+type RegionColor = typeof REGION_COLORS[number];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Pt { x: number; y: number }
+
+interface LassoRegion {
+  id:          number;
+  color:       RegionColor;
+  pts:         Pt[];
+  /** centroid as 0–1 fractions of canvas CSS size — used for pin/box placement */
+  centroidPct: { x: number; y: number };
+  prompt:      string;
+  collapsed:   boolean;
+}
 
 interface ExtraRef { dataUrl: string; name: string }
 
@@ -62,50 +75,44 @@ interface EditPromptModalProps {
   sessionId:   string;
   productId:   string;
   onClose:     () => void;
-  /** Fired at 20 ms — parent shows placeholder card immediately. */
   onPending:   (tempId: string, aspectRatio: string) => void;
-  /** Fired when API responds with the real image ID — parent starts polling. */
   onSubmitted: (tempId: string, realId: string) => void;
-  /** Fired on API error — parent removes the placeholder. */
   onFailed:    (tempId: string) => void;
 }
 
-// ─── Prompt builder ──────────────────────────────────────────────────────────
+// ─── Prompt builder ───────────────────────────────────────────────────────────
 
-/**
- * hasMask=true: uses <IMAGE_0>/<IMAGE_1> addressing so the model knows the
- * red-filled region in IMAGE_1 is the spatial scope for the edit.
- */
 function buildEditPrompt(change: string, aspectRatio: string, hasMask: boolean): string {
-  const ratioNote = `Render the output in ${aspectRatio} aspect ratio.`;
+  const ratioNote  = `Render the output in ${aspectRatio} aspect ratio.`;
+  const trimmed    = change.trim();
 
   if (hasMask) {
-    if (!change) {
+    if (!trimmed) {
       return (
         `<IMAGE_0> is the original product image. ` +
-        `<IMAGE_1> shows the region to edit — the area filled in red is where changes may be applied. ` +
-        `Apply a subtle creative variation only within the highlighted area (you may adjust lighting, ` +
-        `texture, or color treatment there). Keep everything outside the highlighted region exactly as ` +
-        `it appears in <IMAGE_0>. ${ratioNote}`
+        `<IMAGE_1> shows the regions to edit — areas filled in red may be changed. ` +
+        `Apply a subtle creative variation only within the highlighted areas. ` +
+        `Keep everything outside the highlighted regions exactly as in <IMAGE_0>. ${ratioNote}`
       );
     }
     return (
       `<IMAGE_0> is the original product image. ` +
-      `<IMAGE_1> shows the region to edit — the area filled in red is where changes may be applied. ` +
-      `Make only this change: ${change}. Apply the change ONLY within the area marked red in <IMAGE_1>. ` +
-      `Everything outside the highlighted region must stay exactly the same as in <IMAGE_0>. ${ratioNote}`
+      `<IMAGE_1> shows the regions to edit — areas filled in red may be changed. ` +
+      `Make these targeted changes: ${trimmed}. ` +
+      `Apply changes ONLY within the areas marked red in <IMAGE_1>. ` +
+      `Everything outside the highlighted regions must stay exactly as in <IMAGE_0>. ${ratioNote}`
     );
   }
 
-  if (!change) {
+  if (!trimmed) {
     return (
-      `Create a fresh creative variation of this image. You may freely vary the lighting mood, color ` +
-      `grading, background texture, atmospheric quality, or visual energy — but keep the product, its ` +
+      `Create a fresh creative variation of this image. You may freely vary the lighting mood, ` +
+      `color grading, background texture, or atmospheric quality — but keep the product, its ` +
       `placement, and the overall composition intact. ${ratioNote}`
     );
   }
   return (
-    `Make only this change: ${change}. Everything else must stay exactly the same — the product, ` +
+    `Make only this change: ${trimmed}. Everything else must stay exactly the same — the product, ` +
     `background, lighting, composition, colors, and all graphic or text elements not mentioned. ${ratioNote}`
   );
 }
@@ -116,21 +123,23 @@ export function EditPromptModal({
   image, sessionId, productId,
   onClose, onPending, onSubmitted, onFailed,
 }: EditPromptModalProps) {
-  const [mounted,      setMounted]      = useState(false);
-  const [change,       setChange]       = useState('');
-  const [aspectRatio,  setAspectRatio]  = useState(image.aspect_ratio || '1:1');
-  const [submitting,   setSubmitting]   = useState(false);
-  const [extraRefs,    setExtraRefs]    = useState<ExtraRef[]>([]);
+  const [mounted,     setMounted]     = useState(false);
+  const [change,      setChange]      = useState('');
+  const [aspectRatio, setAspectRatio] = useState(image.aspect_ratio || '1:1');
+  const [submitting,  setSubmitting]  = useState(false);
+  const [extraRefs,   setExtraRefs]   = useState<ExtraRef[]>([]);
+  const [regions,     setRegions]     = useState<LassoRegion[]>([]);
 
-  // ── Lasso state ──────────────────────────────────────────────────────────
-  const [isLassoMode,  setIsLassoMode]  = useState(false);
-  const [maskDataUrl,  setMaskDataUrl]  = useState<string | null>(null);
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const isDrawingRef = useRef(false);
-  const lassoPtsRef  = useRef<{ x: number; y: number }[]>([]);
+  // Refs that don't need renders
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const regionsRef     = useRef<LassoRegion[]>([]);
+  const activePtsRef   = useRef<Pt[]>([]);
+  const isDrawingRef   = useRef(false);
+  const debounceTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const textareaRef    = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef   = useRef<HTMLInputElement>(null);
 
-  const textareaRef  = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  regionsRef.current = regions; // keep in sync without stale closure
 
   useEffect(() => {
     setMounted(true);
@@ -143,120 +152,200 @@ export function EditPromptModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, submitting]);
 
-  // ── Canvas helpers ────────────────────────────────────────────────────────
+  // ── Canvas ────────────────────────────────────────────────────────────────
 
-  /** Lazy-init canvas resolution to match its displayed CSS size. */
   function ensureCanvasSize() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (canvas.width !== canvas.offsetWidth || canvas.height !== canvas.offsetHeight) {
-      canvas.width  = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+    const c = canvasRef.current;
+    if (!c) return;
+    if (c.width !== c.offsetWidth || c.height !== c.offsetHeight) {
+      c.width  = c.offsetWidth;
+      c.height = c.offsetHeight;
     }
   }
 
-  function getCanvasPoint(e: React.MouseEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current!;
-    const rect   = canvas.getBoundingClientRect();
-    // Scale from CSS px → canvas internal resolution
+  function getCanvasPoint(e: React.MouseEvent<HTMLCanvasElement>): Pt {
+    const c    = canvasRef.current!;
+    const rect = c.getBoundingClientRect();
     return {
-      x: (e.clientX - rect.left) * (canvas.width  / rect.width),
-      y: (e.clientY - rect.top)  * (canvas.height / rect.height),
+      x: (e.clientX - rect.left) * (c.width  / rect.width),
+      y: (e.clientY - rect.top)  * (c.height / rect.height),
     };
   }
 
-  function redrawLasso(pts: { x: number; y: number }[], closed: boolean) {
-    const canvas = canvasRef.current!;
-    const ctx    = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (pts.length < 2) return;
+  /** Redraws all locked region fills + the active dashed stroke. */
+  const redrawCanvas = useCallback(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const ctx = c.getContext('2d')!;
+    ctx.clearRect(0, 0, c.width, c.height);
 
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-
-    if (closed) {
+    for (const region of regionsRef.current) {
+      if (region.pts.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(region.pts[0].x, region.pts[0].y);
+      for (let i = 1; i < region.pts.length; i++) ctx.lineTo(region.pts[i].x, region.pts[i].y);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.28)';
+      ctx.fillStyle   = region.color.fill;
       ctx.fill();
+      ctx.strokeStyle = region.color.stroke;
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([]);
+      ctx.stroke();
     }
 
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
-    ctx.lineWidth   = 2;
-    ctx.setLineDash(closed ? [] : [5, 4]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+    const activePts = activePtsRef.current;
+    if (activePts.length > 1) {
+      const nextColor = REGION_COLORS[regionsRef.current.length % REGION_COLORS.length];
+      ctx.beginPath();
+      ctx.moveTo(activePts[0].x, activePts[0].y);
+      for (let i = 1; i < activePts.length; i++) ctx.lineTo(activePts[i].x, activePts[i].y);
+      ctx.strokeStyle = nextColor.stroke;
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }, []);
+
+  // Re-render canvas whenever regions array changes (e.g. one removed → renumber)
+  useEffect(() => { redrawCanvas(); }, [regions, redrawCanvas]);
 
   const handleCanvasDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isLassoMode || submitting) return;
+    if (submitting || regions.length >= MAX_REGIONS) return;
     ensureCanvasSize();
-    isDrawingRef.current = true;
-    setMaskDataUrl(null);
-    const pt = getCanvasPoint(e);
-    lassoPtsRef.current = [pt];
-    redrawLasso([pt], false);
+    isDrawingRef.current  = true;
+    activePtsRef.current  = [getCanvasPoint(e)];
+    redrawCanvas();
   };
 
   const handleCanvasMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
-    const pt = getCanvasPoint(e);
-    lassoPtsRef.current = [...lassoPtsRef.current, pt];
-    redrawLasso(lassoPtsRef.current, false);
+    activePtsRef.current = [...activePtsRef.current, getCanvasPoint(e)];
+    redrawCanvas();
   };
 
   const handleCanvasUp = useCallback(() => {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
-    const pts = lassoPtsRef.current;
+    const pts = activePtsRef.current;
+    activePtsRef.current = [];
 
-    if (pts.length < 6) {
-      // Too few points — treat as misclick, clear canvas
-      const canvas = canvasRef.current;
-      if (canvas) canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
-      return;
-    }
+    if (pts.length < 6) { redrawCanvas(); return; }
 
-    redrawLasso(pts, true);
-    setMaskDataUrl(canvasRef.current!.toDataURL('image/png'));
+    const c  = canvasRef.current!;
+    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+    const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+
+    const newRegion: LassoRegion = {
+      id:          regionsRef.current.length + 1,
+      color:       REGION_COLORS[regionsRef.current.length % REGION_COLORS.length],
+      pts,
+      centroidPct: { x: cx / c.width, y: cy / c.height },
+      prompt:      '',
+      collapsed:   false,
+    };
+
+    setRegions((prev) => [...prev, newRegion]);
+  }, [redrawCanvas]);
+
+  // ── Region prompt + debounced collapse ────────────────────────────────────
+
+  const syncMainPrompt = useCallback((updatedRegions: LassoRegion[]) => {
+    const parts = updatedRegions
+      .filter((r) => r.prompt.trim())
+      .map((r)   => `Region ${r.id}: ${r.prompt.trim()}`);
+    setChange(parts.join('. '));
   }, []);
 
-  const clearMask = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (canvas) canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
-    lassoPtsRef.current = [];
-    setMaskDataUrl(null);
+  const handleRegionPromptChange = useCallback((id: number, text: string) => {
+    setRegions((prev) => prev.map((r) => r.id === id ? { ...r, prompt: text } : r));
+
+    const existing = debounceTimers.current.get(id);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      setRegions((prev) => {
+        const next = prev.map((r) => r.id === id ? { ...r, collapsed: true } : r);
+        syncMainPrompt(next);
+        return next;
+      });
+      debounceTimers.current.delete(id);
+    }, 2000);
+
+    debounceTimers.current.set(id, timer);
+  }, [syncMainPrompt]);
+
+  const expandRegion = useCallback((id: number) => {
+    setRegions((prev) => prev.map((r) => r.id === id ? { ...r, collapsed: false } : r));
   }, []);
 
-  const toggleLassoMode = useCallback(() => {
-    setIsLassoMode((prev) => !prev);
+  const removeRegion = useCallback((id: number) => {
+    const t = debounceTimers.current.get(id);
+    if (t) { clearTimeout(t); debounceTimers.current.delete(id); }
+    setRegions((prev) => {
+      // Remove and renumber
+      const next = prev
+        .filter((r) => r.id !== id)
+        .map((r, i) => ({ ...r, id: i + 1, color: REGION_COLORS[i % REGION_COLORS.length] }));
+      syncMainPrompt(next);
+      return next;
+    });
+  }, [syncMainPrompt]);
+
+  const clearAllRegions = useCallback(() => {
+    debounceTimers.current.forEach(clearTimeout);
+    debounceTimers.current.clear();
+    activePtsRef.current = [];
+    setRegions([]);
+    setChange('');
+    const c = canvasRef.current;
+    if (c) c.getContext('2d')!.clearRect(0, 0, c.width, c.height);
   }, []);
 
-  // ── Extra reference image handling ────────────────────────────────────────
+  // ── Extra references ──────────────────────────────────────────────────────
 
-  // Mask is now sent separately (not in the refs array), so extra refs always
-  // get the full 4 slots regardless of whether a lasso selection is active.
-  const maxExtras  = MAX_EXTRA_REFS;
-  const canAddMore = extraRefs.length < maxExtras;
+  const canAddMore = extraRefs.length < MAX_EXTRA_REFS;
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []).slice(0, maxExtras - extraRefs.length);
+    const files = Array.from(e.target.files || []).slice(0, MAX_EXTRA_REFS - extraRefs.length);
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
         setExtraRefs((prev) => {
-          if (prev.length >= maxExtras) return prev;
+          if (prev.length >= MAX_EXTRA_REFS) return prev;
           return [...prev, { dataUrl: reader.result as string, name: file.name }];
         });
       };
       reader.readAsDataURL(file);
     });
     e.target.value = '';
-  }, [extraRefs.length, maxExtras]);
+  }, [extraRefs.length]);
 
   const removeExtraRef = useCallback((idx: number) => {
     setExtraRefs((prev) => prev.filter((_, i) => i !== idx));
   }, []);
+
+  // ── Composite mask ────────────────────────────────────────────────────────
+
+  /** Merges all region paths into one red-fill PNG for the server's mask converter. */
+  function buildCompositeMask(): string | null {
+    const c = canvasRef.current;
+    if (!c || regions.length === 0) return null;
+    const offscreen = document.createElement('canvas');
+    offscreen.width  = c.width;
+    offscreen.height = c.height;
+    const ctx = offscreen.getContext('2d')!;
+    for (const region of regions) {
+      if (region.pts.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(region.pts[0].x, region.pts[0].y);
+      for (let i = 1; i < region.pts.length; i++) ctx.lineTo(region.pts[i].x, region.pts[i].y);
+      ctx.closePath();
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+    }
+    return offscreen.toDataURL('image/png');
+  }
 
   // ── Submit ────────────────────────────────────────────────────────────────
 
@@ -264,22 +353,19 @@ export function EditPromptModal({
     if (submitting) return;
     setSubmitting(true);
 
-    const tempId = crypto.randomUUID();
+    const tempId        = crypto.randomUUID();
+    const compositeMask = buildCompositeMask();
 
-    // Close modal optimistically after 20 ms — placeholder appears immediately
     const closeTimer = setTimeout(() => {
       onPending(tempId, aspectRatio);
       onClose();
     }, 20);
 
     try {
-      // Reference images: original first, then any user-added extras.
-      // The lasso mask is sent separately as `maskDataUrl` so each provider
-      // can handle it natively (OpenAI: inpainting mask; xAI: IMAGE_1 ref).
       const allRefs = [
         ...(image.image_url ? [image.image_url] : []),
         ...extraRefs.map((r) => r.dataUrl),
-      ].slice(0, 5); // xAI hard cap; OpenAI uses up to 4 for image[]
+      ].slice(0, 5);
 
       const res = await fetch('/api/generate/submit', {
         method:  'POST',
@@ -288,10 +374,10 @@ export function EditPromptModal({
           sessionId,
           productId,
           skipAssembly:       true,
-          prompt:             buildEditPrompt(change.trim(), aspectRatio, !!maskDataUrl),
+          prompt:             buildEditPrompt(change, aspectRatio, !!compositeMask),
           aspectRatio,
           referenceImageUrls: allRefs.length ? allRefs : undefined,
-          maskDataUrl:        maskDataUrl ?? undefined,
+          maskDataUrl:        compositeMask ?? undefined,
         }),
       });
 
@@ -310,6 +396,9 @@ export function EditPromptModal({
 
   if (!mounted) return null;
 
+  const hasRegions = regions.length > 0;
+  const canDraw    = regions.length < MAX_REGIONS && !submitting;
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -318,31 +407,32 @@ export function EditPromptModal({
         onClick={!submitting ? onClose : undefined}
       />
 
-      {/* Modal panel */}
+      {/* Panel */}
       <div
         className="relative w-full sm:max-w-xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         style={{ maxHeight: '82vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between px-5 pt-5 pb-4 shrink-0">
           <div className="flex-1 min-w-0 pr-3">
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
               <h2 className="text-sm font-semibold text-brand-navy">Edit Image</h2>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-brand-sage/40 text-brand-slate bg-brand-cream/60 font-medium">
                 Image-to-Image
               </Badge>
-              {maskDataUrl && (
-                <Badge className="text-[10px] px-1.5 py-0 bg-red-500/10 text-red-600 border-red-200 font-medium">
-                  Area selected
+              {hasRegions && (
+                <Badge className="text-[10px] px-1.5 py-0 bg-brand-forest/10 text-brand-forest border-brand-sage/30 font-medium">
+                  {regions.length} region{regions.length !== 1 ? 's' : ''}
                 </Badge>
               )}
             </div>
             <p className="text-xs text-brand-slate/55">
-              {isLassoMode
-                ? 'Click and drag on the image to select the area to edit'
-                : 'Describe your change — leave empty for a clean variation'}
+              {canDraw
+                ? 'Draw on the image to mark areas — each gets its own description'
+                : regions.length >= MAX_REGIONS
+                  ? 'Maximum regions reached — remove one to add more'
+                  : 'Describe your change below'}
             </p>
           </div>
           <button
@@ -354,93 +444,178 @@ export function EditPromptModal({
           </button>
         </div>
 
-        {/* ── Scrollable body ─────────────────────────────────────────── */}
+        {/* ── Scrollable body ──────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 pb-5 space-y-4">
 
-          {/* Reference image + lasso canvas */}
+          {/* ── Reference image + canvas ─────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-brand-navy">Reference Image</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 {image.aspect_ratio && (
                   <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">
                     {image.aspect_ratio}
                   </span>
+                )}
+                {hasRegions && (
+                  <button
+                    onClick={clearAllRegions}
+                    disabled={submitting}
+                    className="flex items-center gap-1 text-[10px] text-brand-slate/40 hover:text-red-500 transition-colors disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3 w-3" /> Clear all regions
+                  </button>
                 )}
               </div>
             </div>
 
             {image.image_url ? (
               <>
-                {/* Image + canvas overlay */}
-                <div className="relative w-full h-52 rounded-xl overflow-hidden border border-brand-sage/20 bg-brand-forest/10 select-none">
-                  <Image
-                    src={image.image_url}
-                    alt="Reference image"
-                    fill
-                    className="object-contain"
-                    sizes="576px"
-                    draggable={false}
-                  />
+                {/*
+                  Outer wrapper: relative + overflow-visible so pins/boxes
+                  can float outside the image's overflow-hidden container.
+                */}
+                <div className="relative w-full select-none">
 
-                  {/* Lasso canvas — always rendered so the drawn mask persists across mode toggles */}
-                  <canvas
-                    ref={canvasRef}
-                    className="absolute inset-0 w-full h-full rounded-xl"
-                    style={{
-                      cursor:        isLassoMode ? 'crosshair' : 'default',
-                      pointerEvents: isLassoMode ? 'all' : 'none',
-                    }}
-                    onMouseDown={handleCanvasDown}
-                    onMouseMove={handleCanvasMove}
-                    onMouseUp={handleCanvasUp}
-                    onMouseLeave={handleCanvasUp}
-                  />
-
-                  {/* Lasso mode hint overlay */}
-                  {isLassoMode && !maskDataUrl && (
-                    <div className="absolute inset-x-0 bottom-0 pb-3 flex justify-center pointer-events-none">
-                      <span className="text-[10px] bg-black/60 text-white px-2.5 py-1 rounded-full font-medium">
-                        Click and drag to draw selection
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Lasso toolbar */}
-                <div className="flex items-center gap-2 mt-2">
-                  <button
-                    onClick={toggleLassoMode}
-                    disabled={submitting}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-all',
-                      'disabled:opacity-40 disabled:cursor-not-allowed',
-                      isLassoMode
-                        ? 'border-red-300 bg-red-50 text-red-600 shadow-sm'
-                        : 'border-brand-sage/30 text-brand-slate hover:border-brand-forest/30 hover:text-brand-forest hover:bg-brand-cream/60',
+                  {/* Image + canvas — overflow-hidden for rounded corners */}
+                  <div className="relative w-full h-52 rounded-xl overflow-hidden border border-brand-sage/20 bg-brand-forest/10">
+                    <Image
+                      src={image.image_url}
+                      alt="Reference"
+                      fill
+                      className="object-contain"
+                      sizes="576px"
+                      draggable={false}
+                    />
+                    <canvas
+                      ref={canvasRef}
+                      className="absolute inset-0 w-full h-full rounded-xl"
+                      style={{ cursor: canDraw ? 'crosshair' : 'default' }}
+                      onMouseDown={handleCanvasDown}
+                      onMouseMove={handleCanvasMove}
+                      onMouseUp={handleCanvasUp}
+                      onMouseLeave={handleCanvasUp}
+                    />
+                    {/* Empty-state hint */}
+                    {!hasRegions && (
+                      <div className="absolute inset-x-0 bottom-0 pb-3 flex justify-center pointer-events-none">
+                        <span className="text-[10px] bg-black/60 text-white px-2.5 py-1 rounded-full font-medium">
+                          Click and drag to mark an area to edit
+                        </span>
+                      </div>
                     )}
-                  >
-                    <PenLine className="h-3.5 w-3.5" />
-                    {isLassoMode ? 'Drawing mode on' : 'Select area to edit'}
-                  </button>
+                  </div>
 
-                  {maskDataUrl && (
-                    <button
-                      onClick={clearMask}
-                      disabled={submitting}
-                      className="flex items-center gap-1 text-xs text-brand-slate/50 hover:text-red-500 transition-colors disabled:opacity-40"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      Clear selection
-                    </button>
-                  )}
+                  {/* ── Region pins + description bubbles ──────────────── */}
+                  {regions.map((region) => {
+                    const lx = `${region.centroidPct.x * 100}%`;
+                    const ty = `${region.centroidPct.y * 100}%`;
+                    // Place bubble above or below based on vertical position
+                    const bubbleBelow = region.centroidPct.y < 0.55;
 
-                  {!maskDataUrl && !isLassoMode && (
-                    <span className="text-[10px] text-brand-slate/40">
-                      Optional — draw to limit the edit to a specific area
-                    </span>
-                  )}
+                    if (region.collapsed) {
+                      // ── Collapsed pin ──
+                      return (
+                        <button
+                          key={region.id}
+                          style={{ position: 'absolute', left: lx, top: ty, transform: 'translate(-50%, -50%)', zIndex: 20 }}
+                          onClick={() => expandRegion(region.id)}
+                          title={`Region ${region.id}${region.prompt ? `: ${region.prompt}` : ' — click to edit'}`}
+                          className={cn(
+                            'w-6 h-6 rounded-full text-white text-[10px] font-bold',
+                            'flex items-center justify-center shadow-lg',
+                            'ring-2 ring-white hover:scale-110 transition-transform',
+                            region.color.pin,
+                          )}
+                        >
+                          {region.id}
+                        </button>
+                      );
+                    }
+
+                    // ── Expanded bubble ──
+                    return (
+                      <div
+                        key={region.id}
+                        style={{
+                          position:  'absolute',
+                          left:      lx,
+                          top:       ty,
+                          transform: bubbleBelow
+                            ? 'translate(-50%, 6px)'
+                            : 'translate(-50%, calc(-100% - 6px))',
+                          zIndex: 30,
+                        }}
+                        className="w-52 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
+                      >
+                        {/* Bubble header */}
+                        <div className="flex items-center gap-1.5 px-2.5 pt-2.5 pb-2 border-b border-gray-100">
+                          <span className={cn(
+                            'w-4 h-4 min-w-[1rem] rounded-full text-white text-[9px] font-bold',
+                            'flex items-center justify-center shrink-0',
+                            region.color.pin,
+                          )}>
+                            {region.id}
+                          </span>
+                          <span className="flex-1 text-[10px] font-semibold text-gray-700">Region {region.id}</span>
+                          <button
+                            onClick={() => removeRegion(region.id)}
+                            className="text-gray-300 hover:text-red-400 transition-colors"
+                            title="Remove region"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+
+                        {/* Description textarea */}
+                        <textarea
+                          value={region.prompt}
+                          onChange={(e) => handleRegionPromptChange(region.id, e.target.value)}
+                          placeholder="Describe the edit here…"
+                          rows={3}
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
+                          autoFocus
+                          className="w-full text-[11px] leading-relaxed resize-none px-2.5 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none"
+                        />
+
+                        <p className="px-2.5 pb-2 text-[9px] text-gray-400">
+                          Collapses 2 s after you stop typing
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
+
+                {/* ── Region summary chips ───────────────────────────── */}
+                {hasRegions && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {regions.map((region) => (
+                      <button
+                        key={region.id}
+                        onClick={() => expandRegion(region.id)}
+                        className={cn(
+                          'flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1',
+                          'border transition-colors',
+                          region.collapsed
+                            ? 'bg-gray-100 text-gray-600 border-transparent hover:border-gray-200'
+                            : 'bg-brand-cream text-brand-forest border-brand-sage/30',
+                        )}
+                      >
+                        <span className={cn(
+                          'w-3.5 h-3.5 min-w-[0.875rem] rounded-full text-white text-[7px] font-bold',
+                          'flex items-center justify-center shrink-0',
+                          region.color.pin,
+                        )}>
+                          {region.id}
+                        </span>
+                        {region.prompt
+                          ? <span className="truncate max-w-[110px]">{region.prompt}</span>
+                          : <span className="text-gray-400 italic">tap to describe</span>
+                        }
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               <div className="w-full rounded-xl border border-dashed border-brand-sage/30 bg-brand-cream/40 flex items-center justify-center py-8">
@@ -452,15 +627,12 @@ export function EditPromptModal({
             )}
           </div>
 
-          {/* Extra reference images */}
+          {/* ── Additional reference images ─────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-brand-navy">Additional References</span>
-              <span className="text-[10px] text-brand-slate/40">
-                {extraRefs.length}/{maxExtras} · Optional
-              </span>
+              <span className="text-[10px] text-brand-slate/40">{extraRefs.length}/{MAX_EXTRA_REFS} · Optional</span>
             </div>
-
             <div className="flex gap-2 flex-wrap">
               {extraRefs.map((ref, idx) => (
                 <div key={idx} className="relative h-16 w-16 rounded-lg overflow-hidden border border-brand-sage/20 bg-brand-cream/40 shrink-0 group">
@@ -474,7 +646,6 @@ export function EditPromptModal({
                   </button>
                 </div>
               ))}
-
               {canAddMore && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -490,22 +661,14 @@ export function EditPromptModal({
                   <span className="text-[9px] text-brand-slate/40 font-medium">Add</span>
                 </button>
               )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-              />
+              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
             </div>
             <p className="mt-1.5 text-[10px] text-brand-slate/40">
               Attach images to guide the style, background, or composition of the edit
             </p>
           </div>
 
-          {/* Change description */}
+          {/* ── Main change description ────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-brand-navy">Describe your change</span>
@@ -526,25 +689,23 @@ export function EditPromptModal({
                 'transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
               )}
               placeholder={
-                maskDataUrl
-                  ? 'Describe the change for the selected area… e.g. make it warmer, add bokeh, change to wood grain'
-                  : 'Describe the change you want… e.g. warmer background, add soft bokeh, change surface to wood, make it more dramatic'
+                hasRegions
+                  ? 'Region descriptions appear here automatically — or edit directly'
+                  : 'Describe the change you want… e.g. warmer background, add soft bokeh, change surface to wood'
               }
             />
             <p className="mt-1.5 text-[10px] text-brand-slate/40">
-              {maskDataUrl
-                ? 'Edit will be applied only within your selection'
-                : 'Leave empty to generate a creative variation of this image'}
+              {hasRegions
+                ? 'Auto-filled from region descriptions — edits apply only within the selected areas'
+                : 'Leave empty to generate a creative variation · Draw on the image above to scope to a specific area'}
             </p>
           </div>
 
-          {/* Output format */}
+          {/* ── Output format ─────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-brand-navy">Output Format</span>
-              <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">
-                {aspectRatio}
-              </span>
+              <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">{aspectRatio}</span>
             </div>
             <div className="rounded-xl border border-brand-sage/20 overflow-hidden divide-y divide-brand-sage/15">
               {ASPECT_RATIOS.map(({ value, label, hint, Icon }) => {
@@ -595,12 +756,11 @@ export function EditPromptModal({
             className="gap-1.5 bg-brand-forest hover:bg-brand-forest/90 text-xs h-8 px-4"
           >
             {submitting
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Starting…</>
-              : <><Wand2   className="h-3.5 w-3.5" />Generate Edit</>
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</>
+              : <><Wand2   className="h-3.5 w-3.5" /> Generate Edit</>
             }
           </Button>
         </div>
-
       </div>
     </div>,
     document.body,
