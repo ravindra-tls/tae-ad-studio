@@ -43,6 +43,11 @@ interface GalleryProps {
   ratedImageIds: Set<string>;   // images this user already reacted to — skipped in swipe mode
 }
 
+// ─── Masonry item type (module-scope so SWC parser doesn't choke on it) ───────
+type GalleryColItem =
+  | { kind: 'edit';  entry: EditEntry }
+  | { kind: 'image'; img: GalleryImage; colIdx: number };
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) {
   const [activeTab,      setActiveTab]      = useState<FilterTab>('all');
@@ -180,9 +185,6 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
   // Build a flat ordered list: edit placeholders first, then images.
   // Then distribute left-to-right into N columns via index % numCols so each
   // column is an independent flex stack with no inter-row gap coupling.
-  type GalleryColItem =
-    | { kind: 'edit';  entry: EditEntry }
-    | { kind: 'image'; img: GalleryImage; colIdx: number };
 
   const galleryAllItems: GalleryColItem[] = [
     ...editEntries.map((entry) => ({ kind: 'edit' as const, entry })),
