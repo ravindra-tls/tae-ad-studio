@@ -428,8 +428,276 @@ export function EditPromptModal({
 
   if (!mounted) return null;
 
-  const hasRegions = regions.length > 0;
-  const canDraw    = regions.length < MAX_REGIONS && !submitting;
+  const hasRegions  = regions.length > 0;
+  const canDraw     = regions.length < MAX_REGIONS && !submitting;
+  // Layout branches: 16:9 → wide image + narrow refs col; everything else → image | refs+describe
+  const isLandscape = (image.aspect_ratio || '1:1') === '16:9';
+  // Image container height: portrait images need more vertical room; landscape stays compact
+  const imgH = isLandscape ? 'h-40' : 'h-[340px]';
+
+  // ── Reusable sub-sections ─────────────────────────────────────────────────
+
+  /** The image + canvas + pins + chips block (goes in the image column) */
+  const imageBlock = (
+    <div>
+      {/* Column header */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-brand-navy">Reference Image</span>
+        <div className="flex items-center gap-2.5">
+          {image.aspect_ratio && (
+            <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">
+              {image.aspect_ratio}
+            </span>
+          )}
+          {hasRegions && (
+            <button
+              onClick={clearAllRegions}
+              disabled={submitting}
+              className="flex items-center gap-1 text-[10px] text-brand-slate/40 hover:text-red-500 transition-colors disabled:opacity-40"
+            >
+              <Trash2 className="h-3 w-3" /> Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {image.image_url ? (
+        <>
+          {/* Outer relative wrapper — overflow-visible so pins/bubbles can float out */}
+          <div className="relative w-full select-none">
+
+            {/* Image + canvas — overflow-hidden for rounded corners */}
+            <div className={cn('relative w-full rounded-xl overflow-hidden border border-brand-sage/20 bg-brand-forest/10', imgH)}>
+              <Image
+                src={image.image_url}
+                alt="Reference"
+                fill
+                className="object-contain"
+                sizes="(min-width: 640px) 400px, 100vw"
+                draggable={false}
+              />
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 w-full h-full rounded-xl"
+                style={{ cursor: canDraw ? 'crosshair' : 'default' }}
+                onMouseDown={handleCanvasDown}
+                onMouseMove={handleCanvasMove}
+                onMouseUp={handleCanvasUp}
+                onMouseLeave={handleCanvasUp}
+              />
+              {!hasRegions && (
+                <div className="absolute inset-x-0 bottom-0 pb-3 flex justify-center pointer-events-none">
+                  <span className="text-[10px] bg-black/60 text-white px-2.5 py-1 rounded-full font-medium">
+                    Click and drag to mark an area to edit
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Region pins + bubbles */}
+            {regions.map((region) => {
+              const lx          = `${region.centroidPct.x * 100}%`;
+              const ty          = `${region.centroidPct.y * 100}%`;
+              const bubbleBelow = region.centroidPct.y < 0.55;
+
+              if (region.collapsed) {
+                return (
+                  <button
+                    key={region.id}
+                    style={{ position: 'absolute', left: lx, top: ty, transform: 'translate(-50%, -50%)', zIndex: 20 }}
+                    onClick={() => expandRegion(region.id)}
+                    title={`Region ${region.id}${region.prompt ? `: ${region.prompt}` : ' — click to edit'}`}
+                    className={cn(
+                      'w-6 h-6 rounded-full text-white text-[10px] font-bold',
+                      'flex items-center justify-center shadow-lg ring-2 ring-white hover:scale-110 transition-transform',
+                      region.color.pin,
+                    )}
+                  >
+                    {region.id}
+                  </button>
+                );
+              }
+
+              return (
+                <div
+                  key={region.id}
+                  style={{
+                    position:  'absolute',
+                    left:      lx,
+                    top:       ty,
+                    transform: bubbleBelow ? 'translate(-50%, 6px)' : 'translate(-50%, calc(-100% - 6px))',
+                    zIndex:    30,
+                  }}
+                  className="w-48 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
+                >
+                  <div className="flex items-center gap-1.5 px-2.5 pt-2.5 pb-2 border-b border-gray-100">
+                    <span className={cn('w-4 h-4 min-w-[1rem] rounded-full text-white text-[9px] font-bold flex items-center justify-center shrink-0', region.color.pin)}>
+                      {region.id}
+                    </span>
+                    <span className="flex-1 text-[10px] font-semibold text-gray-700">Region {region.id}</span>
+                    <button onClick={() => removeRegion(region.id)} className="text-gray-300 hover:text-red-400 transition-colors" title="Remove">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <textarea
+                    value={region.prompt}
+                    onChange={(e) => handleRegionPromptChange(region.id, e.target.value)}
+                    placeholder="Describe the edit here…"
+                    rows={3}
+                    // eslint-disable-next-line jsx-a11y/no-autofocus
+                    autoFocus
+                    className="w-full text-[11px] leading-relaxed resize-none px-2.5 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none"
+                  />
+                  <p className="px-2.5 pb-2 text-[9px] text-gray-400">Collapses 2 s after you stop typing</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Region chips */}
+          {hasRegions && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {regions.map((region) => (
+                <button
+                  key={region.id}
+                  onClick={() => expandRegion(region.id)}
+                  className={cn(
+                    'flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1 border transition-colors',
+                    region.collapsed
+                      ? 'bg-gray-100 text-gray-600 border-transparent hover:border-gray-200'
+                      : 'bg-brand-cream text-brand-forest border-brand-sage/30',
+                  )}
+                >
+                  <span className={cn('w-3.5 h-3.5 min-w-[0.875rem] rounded-full text-white text-[7px] font-bold flex items-center justify-center shrink-0', region.color.pin)}>
+                    {region.id}
+                  </span>
+                  {region.prompt
+                    ? <span className="truncate max-w-[100px]">{region.prompt}</span>
+                    : <span className="text-gray-400 italic">tap to describe</span>
+                  }
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className={cn('w-full rounded-xl border border-dashed border-brand-sage/30 bg-brand-cream/40 flex items-center justify-center', imgH)}>
+          <div className="text-center">
+            <ImageIcon className="h-6 w-6 text-brand-sage mx-auto mb-1" />
+            <p className="text-xs text-brand-slate/40">No reference image</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  /** Additional references block */
+  const refsBlock = (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-brand-navy">Additional References</span>
+        <span className="text-[10px] text-brand-slate/40">{extraRefs.length}/{MAX_EXTRA_REFS}</span>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        {extraRefs.map((ref, idx) => (
+          <div key={idx} className="relative h-14 w-14 rounded-lg overflow-hidden border border-brand-sage/20 bg-brand-cream/40 shrink-0 group">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={ref.dataUrl} alt={ref.name} className="h-full w-full object-cover" />
+            <button
+              onClick={() => removeExtraRef(idx)}
+              className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center"
+            >
+              <X className="h-3 w-3 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          </div>
+        ))}
+        {canAddMore && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={submitting}
+            className={cn(
+              'h-14 w-14 rounded-lg border border-dashed border-brand-sage/35 bg-brand-cream/30',
+              'flex flex-col items-center justify-center gap-1 shrink-0',
+              'hover:border-brand-forest/40 hover:bg-brand-cream/60 transition-colors',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+            )}
+          >
+            <Plus className="h-4 w-4 text-brand-slate/40" />
+            <span className="text-[9px] text-brand-slate/40 font-medium">Add</span>
+          </button>
+        )}
+        <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+      </div>
+      <p className="mt-1.5 text-[10px] text-brand-slate/40">Guide the style or composition</p>
+    </div>
+  );
+
+  /** Describe your change textarea block */
+  const describeBlock = (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-brand-navy">Describe your change</span>
+        {change.length > 0 && <span className="text-[10px] text-brand-slate/40">{change.length} chars</span>}
+      </div>
+      <textarea
+        ref={textareaRef}
+        value={change}
+        onChange={(e) => setChange(e.target.value)}
+        disabled={submitting}
+        rows={isLandscape ? 2 : 3}
+        className={cn(
+          'w-full resize-none rounded-xl border border-brand-sage/25 bg-brand-cream/40 px-4 py-3',
+          'text-sm text-brand-navy leading-relaxed placeholder:text-brand-slate/35',
+          'focus:outline-none focus:border-brand-forest/40 focus:bg-white',
+          'transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
+        )}
+        placeholder={
+          hasRegions
+            ? 'Region descriptions appear here automatically…'
+            : 'e.g. warmer background, add soft bokeh, change surface to wood'
+        }
+      />
+      <p className="mt-1.5 text-[10px] text-brand-slate/40">
+        {hasRegions ? 'Auto-filled from regions — edits apply only within selected areas' : 'Leave empty for a creative variation'}
+      </p>
+    </div>
+  );
+
+  /** Output format selector */
+  const outputBlock = (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-brand-navy">Output Format</span>
+        <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">{aspectRatio}</span>
+      </div>
+      <div className="rounded-xl border border-brand-sage/20 overflow-hidden divide-y divide-brand-sage/15">
+        {ASPECT_RATIOS.map(({ value, label, hint, Icon }) => {
+          const active = aspectRatio === value;
+          return (
+            <button
+              key={value}
+              onClick={() => setAspectRatio(value)}
+              disabled={submitting}
+              className={cn(
+                'w-full flex items-center gap-3 px-4 py-2 text-left transition-colors',
+                'disabled:opacity-40 disabled:cursor-not-allowed',
+                active ? 'bg-brand-forest/5' : 'bg-white hover:bg-brand-cream/50',
+              )}
+            >
+              <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors', active ? 'border-brand-forest bg-brand-forest' : 'border-brand-sage/40 bg-white')}>
+                {active && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+              </span>
+              <Icon className={cn('h-4 w-4 shrink-0 transition-colors', active ? 'text-brand-forest' : 'text-brand-slate/40')} />
+              <span className={cn('flex-1 text-xs font-medium transition-colors', active ? 'text-brand-forest' : 'text-brand-navy')}>
+                {label} — {hint}
+              </span>
+              {active && <Check className="h-3.5 w-3.5 text-brand-forest shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -439,10 +707,10 @@ export function EditPromptModal({
         onClick={!submitting ? onClose : undefined}
       />
 
-      {/* Panel */}
+      {/* Panel — wider than before to support two-column layout */}
       <div
-        className="relative w-full sm:max-w-xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ maxHeight: '82vh' }}
+        className="relative w-full sm:max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ maxHeight: '88vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
@@ -467,11 +735,7 @@ export function EditPromptModal({
                   : 'Describe your change below'}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="shrink-0 p-1.5 rounded-lg hover:bg-brand-cream transition-colors text-brand-slate/50 hover:text-brand-slate disabled:opacity-40"
-          >
+          <button onClick={onClose} disabled={submitting} className="shrink-0 p-1.5 rounded-lg hover:bg-brand-cream transition-colors text-brand-slate/50 hover:text-brand-slate disabled:opacity-40">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -479,296 +743,38 @@ export function EditPromptModal({
         {/* ── Scrollable body ──────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto min-h-0 px-5 pb-5 space-y-4">
 
-          {/* ── Reference image + canvas ─────────────────────────────── */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-brand-navy">Reference Image</span>
-              <div className="flex items-center gap-3">
-                {image.aspect_ratio && (
-                  <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">
-                    {image.aspect_ratio}
-                  </span>
-                )}
-                {hasRegions && (
-                  <button
-                    onClick={clearAllRegions}
-                    disabled={submitting}
-                    className="flex items-center gap-1 text-[10px] text-brand-slate/40 hover:text-red-500 transition-colors disabled:opacity-40"
-                  >
-                    <Trash2 className="h-3 w-3" /> Clear all regions
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {image.image_url ? (
-              <>
-                {/*
-                  Outer wrapper: relative + overflow-visible so pins/boxes
-                  can float outside the image's overflow-hidden container.
-                */}
-                <div className="relative w-full select-none">
-
-                  {/* Image + canvas — overflow-hidden for rounded corners */}
-                  <div className="relative w-full h-52 rounded-xl overflow-hidden border border-brand-sage/20 bg-brand-forest/10">
-                    <Image
-                      src={image.image_url}
-                      alt="Reference"
-                      fill
-                      className="object-contain"
-                      sizes="576px"
-                      draggable={false}
-                    />
-                    <canvas
-                      ref={canvasRef}
-                      className="absolute inset-0 w-full h-full rounded-xl"
-                      style={{ cursor: canDraw ? 'crosshair' : 'default' }}
-                      onMouseDown={handleCanvasDown}
-                      onMouseMove={handleCanvasMove}
-                      onMouseUp={handleCanvasUp}
-                      onMouseLeave={handleCanvasUp}
-                    />
-                    {/* Empty-state hint */}
-                    {!hasRegions && (
-                      <div className="absolute inset-x-0 bottom-0 pb-3 flex justify-center pointer-events-none">
-                        <span className="text-[10px] bg-black/60 text-white px-2.5 py-1 rounded-full font-medium">
-                          Click and drag to mark an area to edit
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── Region pins + description bubbles ──────────────── */}
-                  {regions.map((region) => {
-                    const lx = `${region.centroidPct.x * 100}%`;
-                    const ty = `${region.centroidPct.y * 100}%`;
-                    // Place bubble above or below based on vertical position
-                    const bubbleBelow = region.centroidPct.y < 0.55;
-
-                    if (region.collapsed) {
-                      // ── Collapsed pin ──
-                      return (
-                        <button
-                          key={region.id}
-                          style={{ position: 'absolute', left: lx, top: ty, transform: 'translate(-50%, -50%)', zIndex: 20 }}
-                          onClick={() => expandRegion(region.id)}
-                          title={`Region ${region.id}${region.prompt ? `: ${region.prompt}` : ' — click to edit'}`}
-                          className={cn(
-                            'w-6 h-6 rounded-full text-white text-[10px] font-bold',
-                            'flex items-center justify-center shadow-lg',
-                            'ring-2 ring-white hover:scale-110 transition-transform',
-                            region.color.pin,
-                          )}
-                        >
-                          {region.id}
-                        </button>
-                      );
-                    }
-
-                    // ── Expanded bubble ──
-                    return (
-                      <div
-                        key={region.id}
-                        style={{
-                          position:  'absolute',
-                          left:      lx,
-                          top:       ty,
-                          transform: bubbleBelow
-                            ? 'translate(-50%, 6px)'
-                            : 'translate(-50%, calc(-100% - 6px))',
-                          zIndex: 30,
-                        }}
-                        className="w-52 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
-                      >
-                        {/* Bubble header */}
-                        <div className="flex items-center gap-1.5 px-2.5 pt-2.5 pb-2 border-b border-gray-100">
-                          <span className={cn(
-                            'w-4 h-4 min-w-[1rem] rounded-full text-white text-[9px] font-bold',
-                            'flex items-center justify-center shrink-0',
-                            region.color.pin,
-                          )}>
-                            {region.id}
-                          </span>
-                          <span className="flex-1 text-[10px] font-semibold text-gray-700">Region {region.id}</span>
-                          <button
-                            onClick={() => removeRegion(region.id)}
-                            className="text-gray-300 hover:text-red-400 transition-colors"
-                            title="Remove region"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-
-                        {/* Description textarea */}
-                        <textarea
-                          value={region.prompt}
-                          onChange={(e) => handleRegionPromptChange(region.id, e.target.value)}
-                          placeholder="Describe the edit here…"
-                          rows={3}
-                          // eslint-disable-next-line jsx-a11y/no-autofocus
-                          autoFocus
-                          className="w-full text-[11px] leading-relaxed resize-none px-2.5 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none"
-                        />
-
-                        <p className="px-2.5 pb-2 text-[9px] text-gray-400">
-                          Collapses 2 s after you stop typing
-                        </p>
-                      </div>
-                    );
-                  })}
+          {isLandscape ? (
+            /* ── Landscape: image (wide) + refs (narrow) side by side ── */
+            <>
+              <div className="flex gap-4 items-start">
+                {/* Image col — takes 3/4 of space */}
+                <div className="flex-[3] min-w-0">
+                  {imageBlock}
                 </div>
-
-                {/* ── Region summary chips ───────────────────────────── */}
-                {hasRegions && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {regions.map((region) => (
-                      <button
-                        key={region.id}
-                        onClick={() => expandRegion(region.id)}
-                        className={cn(
-                          'flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1',
-                          'border transition-colors',
-                          region.collapsed
-                            ? 'bg-gray-100 text-gray-600 border-transparent hover:border-gray-200'
-                            : 'bg-brand-cream text-brand-forest border-brand-sage/30',
-                        )}
-                      >
-                        <span className={cn(
-                          'w-3.5 h-3.5 min-w-[0.875rem] rounded-full text-white text-[7px] font-bold',
-                          'flex items-center justify-center shrink-0',
-                          region.color.pin,
-                        )}>
-                          {region.id}
-                        </span>
-                        {region.prompt
-                          ? <span className="truncate max-w-[110px]">{region.prompt}</span>
-                          : <span className="text-gray-400 italic">tap to describe</span>
-                        }
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="w-full rounded-xl border border-dashed border-brand-sage/30 bg-brand-cream/40 flex items-center justify-center py-8">
-                <div className="text-center">
-                  <ImageIcon className="h-6 w-6 text-brand-sage mx-auto mb-1" />
-                  <p className="text-xs text-brand-slate/40">No reference image</p>
+                {/* Refs col — takes 1/4 */}
+                <div className="flex-[1] min-w-[150px]">
+                  {refsBlock}
                 </div>
               </div>
-            )}
-          </div>
+              {describeBlock}
+            </>
+          ) : (
+            /* ── Portrait / Square: image (left) | refs + describe (right) ── */
+            <div className="flex gap-4 items-start">
+              {/* Image col */}
+              <div className="flex-1 min-w-0">
+                {imageBlock}
+              </div>
+              {/* Controls col */}
+              <div className="w-[210px] shrink-0 flex flex-col gap-4">
+                {refsBlock}
+                {describeBlock}
+              </div>
+            </div>
+          )}
 
-          {/* ── Additional reference images ─────────────────────────── */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-brand-navy">Additional References</span>
-              <span className="text-[10px] text-brand-slate/40">{extraRefs.length}/{MAX_EXTRA_REFS} · Optional</span>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {extraRefs.map((ref, idx) => (
-                <div key={idx} className="relative h-16 w-16 rounded-lg overflow-hidden border border-brand-sage/20 bg-brand-cream/40 shrink-0 group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={ref.dataUrl} alt={ref.name} className="h-full w-full object-cover" />
-                  <button
-                    onClick={() => removeExtraRef(idx)}
-                    className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center"
-                  >
-                    <X className="h-3.5 w-3.5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </div>
-              ))}
-              {canAddMore && (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={submitting}
-                  className={cn(
-                    'h-16 w-16 rounded-lg border border-dashed border-brand-sage/35 bg-brand-cream/30',
-                    'flex flex-col items-center justify-center gap-1 shrink-0',
-                    'hover:border-brand-forest/40 hover:bg-brand-cream/60 transition-colors',
-                    'disabled:opacity-40 disabled:cursor-not-allowed',
-                  )}
-                >
-                  <Plus className="h-4 w-4 text-brand-slate/40" />
-                  <span className="text-[9px] text-brand-slate/40 font-medium">Add</span>
-                </button>
-              )}
-              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
-            </div>
-            <p className="mt-1.5 text-[10px] text-brand-slate/40">
-              Attach images to guide the style, background, or composition of the edit
-            </p>
-          </div>
-
-          {/* ── Main change description ────────────────────────────────── */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-brand-navy">Describe your change</span>
-              {change.length > 0 && (
-                <span className="text-[10px] text-brand-slate/40">{change.length} chars</span>
-              )}
-            </div>
-            <textarea
-              ref={textareaRef}
-              value={change}
-              onChange={(e) => setChange(e.target.value)}
-              disabled={submitting}
-              rows={3}
-              className={cn(
-                'w-full resize-none rounded-xl border border-brand-sage/25 bg-brand-cream/40 px-4 py-3',
-                'text-sm text-brand-navy leading-relaxed placeholder:text-brand-slate/35',
-                'focus:outline-none focus:border-brand-forest/40 focus:bg-white',
-                'transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
-              )}
-              placeholder={
-                hasRegions
-                  ? 'Region descriptions appear here automatically — or edit directly'
-                  : 'Describe the change you want… e.g. warmer background, add soft bokeh, change surface to wood'
-              }
-            />
-            <p className="mt-1.5 text-[10px] text-brand-slate/40">
-              {hasRegions
-                ? 'Auto-filled from region descriptions — edits apply only within the selected areas'
-                : 'Leave empty to generate a creative variation · Draw on the image above to scope to a specific area'}
-            </p>
-          </div>
-
-          {/* ── Output format ─────────────────────────────────────────── */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-brand-navy">Output Format</span>
-              <span className="text-[10px] text-brand-slate/50 bg-brand-cream px-1.5 py-0.5 rounded font-medium">{aspectRatio}</span>
-            </div>
-            <div className="rounded-xl border border-brand-sage/20 overflow-hidden divide-y divide-brand-sage/15">
-              {ASPECT_RATIOS.map(({ value, label, hint, Icon }) => {
-                const active = aspectRatio === value;
-                return (
-                  <button
-                    key={value}
-                    onClick={() => setAspectRatio(value)}
-                    disabled={submitting}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors',
-                      'disabled:opacity-40 disabled:cursor-not-allowed',
-                      active ? 'bg-brand-forest/5' : 'bg-white hover:bg-brand-cream/50',
-                    )}
-                  >
-                    <span className={cn(
-                      'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                      active ? 'border-brand-forest bg-brand-forest' : 'border-brand-sage/40 bg-white',
-                    )}>
-                      {active && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                    </span>
-                    <Icon className={cn('h-4 w-4 shrink-0 transition-colors', active ? 'text-brand-forest' : 'text-brand-slate/40')} />
-                    <span className={cn('flex-1 text-xs font-medium transition-colors', active ? 'text-brand-forest' : 'text-brand-navy')}>
-                      {label} — {hint}
-                    </span>
-                    {active && <Check className="h-3.5 w-3.5 text-brand-forest shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Output format — always full-width at the bottom */}
+          {outputBlock}
 
         </div>
 
