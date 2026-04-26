@@ -47,7 +47,8 @@ interface GalleryProps {
 export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) {
   const [activeTab,      setActiveTab]      = useState<FilterTab>('all');
   const [productFilter,  setProductFilter]  = useState<string>('all');
-  const [starred,        setStarred]        = useState<Set<string>>(() => loadStarred(currentUserId));
+  // Start empty — populated from localStorage after mount to avoid SSR/client hydration mismatch.
+  const [starred,        setStarred]        = useState<Set<string>>(new Set());
   const [lightboxIdx,    setLightboxIdx]    = useState<number | null>(null);
   const [viewMode,       setViewMode]       = useState<ViewMode>('grid');
   const [editingImage,   setEditingImage]   = useState<GeneratedImage | null>(null);
@@ -63,6 +64,10 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, []);
+
+  useEffect(() => {
+    setStarred(loadStarred(currentUserId));
+  }, [currentUserId]);
 
   const products = useMemo(() => {
     const map = new Map<string, string>();
