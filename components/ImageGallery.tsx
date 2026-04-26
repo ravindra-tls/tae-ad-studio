@@ -8,6 +8,7 @@ import { RefreshCw } from 'lucide-react';
 import { ImageCard } from '@/components/ImageCard';
 import { Lightbox } from '@/components/Lightbox';
 import { EditPromptModal } from '@/components/EditPromptModal';
+import { AnalyzingImage } from '@/components/AnalyzingImage';
 import { cn, downloadImage } from '@/lib/utils';
 import type { GeneratedImage } from '@/types';
 
@@ -170,9 +171,9 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
                     className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden animate-edit-arrive"
                     style={{ aspectRatio: item.entry.aspectRatio.replace(':', '/') }}
                   >
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
-                      <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
-                      <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-brand-forest">
+                      <AnalyzingImage className="size-20 opacity-80" />
+                      <p className="text-xs text-brand-slate/60 font-medium tracking-wide">Generating edit…</p>
                     </div>
                   </div>
                 );
