@@ -433,7 +433,7 @@ export function EditPromptModal({
   // Layout branches: 16:9 → wide image + narrow refs col; everything else → image | refs+describe
   const isLandscape = (image.aspect_ratio || '1:1') === '16:9';
   // Image container height: portrait images need more vertical room; landscape stays compact
-  const imgH = isLandscape ? 'h-40' : 'h-[340px]';
+  const imgH = isLandscape ? 'h-56' : 'h-[420px]';
 
   // ── Reusable sub-sections ─────────────────────────────────────────────────
 
@@ -644,7 +644,7 @@ export function EditPromptModal({
         value={change}
         onChange={(e) => setChange(e.target.value)}
         disabled={submitting}
-        rows={isLandscape ? 2 : 3}
+        rows={isLandscape ? 3 : 4}
         className={cn(
           'w-full resize-none rounded-xl border border-brand-sage/25 bg-brand-cream/40 px-4 py-3',
           'text-sm text-brand-navy leading-relaxed placeholder:text-brand-slate/35',
