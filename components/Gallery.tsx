@@ -285,8 +285,8 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
           <SwipeView images={swipeQueue} />
         )
       ) : (
-        /* Grid mode */
-        filtered.length === 0 ? (
+        /* Masonry grid mode — Pinterest-style, images at natural aspect ratio */
+        filtered.length === 0 && editEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-brand-sage/30 bg-brand-cream/30 py-20 stagger-item" style={{ animationDelay: '120ms' }}>
             <Images className="h-10 w-10 text-brand-forest/20 mb-3" />
             <p className="text-sm font-medium text-brand-slate">No images found</p>
@@ -295,42 +295,44 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
             </p>
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="columns-2 lg:columns-3 xl:columns-4 gap-5">
 
-            {/* Edit placeholders — visible as soon as modal closes (20 ms) */}
+            {/* Edit placeholders */}
             {editEntries.map((entry) => (
-              <div
-                key={entry.tempId}
-                className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
-                style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
-              >
-                <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
-                  <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
-                  <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
+              <div key={entry.tempId} className="break-inside-avoid mb-5">
+                <div
+                  className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
+                  style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
+                >
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
+                    <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
+                    <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
+                  </div>
                 </div>
               </div>
             ))}
 
             {/* Fresh edit results + existing images */}
             {[...freshImages, ...filtered].map((img, i) => (
-              <ImageCard
-                key={img.id}
-                image={img as unknown as GeneratedImage}
-                index={i}
-                isStarred={starred.has(img.id)}
-                onStar={() => toggleStar(img.id)}
-                onDownload={() => handleDownload(img)}
-                onOpenLightbox={() => setLightboxIdx(i)}
-                onEdit={img.session_id && (img as GalleryImage).product_id
-                  ? () => setEditingImage(img as unknown as GeneratedImage)
-                  : undefined}
-                galleryMeta={{
-                  creatorName:     (img as GalleryImage).creator_name,
-                  creatorInitials: (img as GalleryImage).creator_initials,
-                  productName:     (img as GalleryImage).product_name,
-                  productSubBrand: (img as GalleryImage).product_sub_brand,
-                }}
-              />
+              <div key={img.id} className="break-inside-avoid mb-5">
+                <ImageCard
+                  image={img as unknown as GeneratedImage}
+                  index={i}
+                  isStarred={starred.has(img.id)}
+                  onStar={() => toggleStar(img.id)}
+                  onDownload={() => handleDownload(img)}
+                  onOpenLightbox={() => setLightboxIdx(i)}
+                  onEdit={img.session_id && (img as GalleryImage).product_id
+                    ? () => setEditingImage(img as unknown as GeneratedImage)
+                    : undefined}
+                  galleryMeta={{
+                    creatorName:     (img as GalleryImage).creator_name,
+                    creatorInitials: (img as GalleryImage).creator_initials,
+                    productName:     (img as GalleryImage).product_name,
+                    productSubBrand: (img as GalleryImage).product_sub_brand,
+                  }}
+                />
+              </div>
             ))}
           </div>
         )

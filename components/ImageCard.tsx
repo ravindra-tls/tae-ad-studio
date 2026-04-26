@@ -85,10 +85,10 @@ export function ImageCard({
         className="tae-flip-card tae-card-hover stagger-item"
         style={{ animationDelay: `${index * 60}ms` }}
       >
-        <div className={cn(
-          'relative rounded-xl overflow-hidden border border-brand-sage/20 shadow-sm',
-          galleryMeta ? 'aspect-square' : 'aspect-square',
-        )}>
+        <div
+          className="relative rounded-xl overflow-hidden border border-brand-sage/20 shadow-sm"
+          style={{ aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/') }}
+        >
           <div className={innerClass}>
 
             {/* ── FRONT ──────────────────────────────────────────────── */}
