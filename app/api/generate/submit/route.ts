@@ -92,6 +92,10 @@ export async function POST(request: Request) {
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
   // 6. Call Vertex AI
+  // imageUrl is hoisted so we can return it directly in the response —
+  // the client receives it immediately and never needs to poll for edits.
+  let completedImageUrl: string | undefined;
+
   try {
     const result = await imageProvider.submitGeneration({
       prompt:             finalPrompt,
@@ -123,12 +127,14 @@ export async function POST(request: Request) {
         .from('generated-images')
         .getPublicUrl(filePath);
 
+      completedImageUrl = publicUrlData.publicUrl;
+
       await serviceClient
         .from('generated_images')
         .update({
           request_id: result.requestId,
           status: 'completed',
-          image_url: publicUrlData.publicUrl,
+          image_url: completedImageUrl,
         })
         .eq('id', genImage.id);
     } else if (result.status === 'failed' || result.status === 'nsfw') {
@@ -155,7 +161,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       generatedImageId: genImage.id,
-      requestId: result.requestId,
+      requestId:        result.requestId,
+      // imageUrl is included when generation is synchronous (xAI/OpenAI).
+      // The client can use it immediately and skip the polling round-trip.
+      imageUrl:         completedImageUrl,
     });
   } catch (err: any) {
     // Update status to failed

@@ -12,9 +12,9 @@
  * combined prompt so the model edits only within the selected areas.
  *
  * Callbacks (unchanged):
- *  onPending(tempId, aspectRatio)   — 20 ms after submit → parent shows placeholder
- *  onSubmitted(tempId, realId)      — API responds → parent starts polling
- *  onFailed(tempId)                 — API error → parent removes placeholder
+ *  onPending(tempId, aspectRatio)        — animation done → parent shows placeholder
+ *  onSubmitted(tempId, realId, imageUrl?) — API responds → imageUrl skips polling entirely
+ *  onFailed(tempId)                       — API error → parent removes placeholder
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -76,7 +76,7 @@ interface EditPromptModalProps {
   productId:   string;
   onClose:     () => void;
   onPending:   (tempId: string, aspectRatio: string) => void;
-  onSubmitted: (tempId: string, realId: string) => void;
+  onSubmitted: (tempId: string, realId: string, imageUrl?: string) => void;
   onFailed:    (tempId: string) => void;
 }
 
@@ -496,8 +496,8 @@ export function EditPromptModal({
         throw new Error(data.error || 'Generation failed');
       }
 
-      const { generatedImageId } = await res.json();
-      onSubmitted(tempId, generatedImageId);
+      const { generatedImageId, imageUrl } = await res.json();
+      onSubmitted(tempId, generatedImageId, imageUrl);
     } catch {
       // API failed — cancel animation + morph timer, restore normal state
       clearTimeout(morphTimer);

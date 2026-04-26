@@ -270,8 +270,26 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
             setEditingImage(null);
             setEditEntries((prev) => [...prev, { tempId, realId: null, aspectRatio, sourceImage: editingImage }]);
           }}
-          onSubmitted={(tempId, realId) => {
-            setEditEntries((prev) => prev.map((e) => e.tempId === tempId ? { ...e, realId } : e));
+          onSubmitted={(tempId, realId, imageUrl) => {
+            if (imageUrl) {
+              // imageUrl arrives directly from the submit route (xAI/OpenAI are synchronous).
+              // Skip polling entirely — remove the placeholder and show the real image at once.
+              const entry = entriesRef.current.find((e) => e.tempId === tempId);
+              if (entry) {
+                setFreshImages((prev) => [{
+                  ...entry.sourceImage,
+                  id:           realId,
+                  image_url:    imageUrl,
+                  aspect_ratio: entry.aspectRatio,
+                  status:       'completed' as const,
+                  created_at:   new Date().toISOString(),
+                }, ...prev]);
+              }
+              setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
+            } else {
+              // Async provider (Vertex AI etc.) — set realId and let polling handle it
+              setEditEntries((prev) => prev.map((e) => e.tempId === tempId ? { ...e, realId } : e));
+            }
           }}
           onFailed={(tempId) => {
             setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
