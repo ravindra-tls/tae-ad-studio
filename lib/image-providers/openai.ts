@@ -24,7 +24,7 @@ import type { GenerateParams, GenerateResult, ImageProvider, StatusResult } from
 
 const OPENAI_GENERATIONS_URL = 'https://api.openai.com/v1/images/generations';
 const OPENAI_EDITS_URL       = 'https://api.openai.com/v1/images/edits';
-const DEFAULT_MODEL          = 'gpt-image-1';
+const DEFAULT_MODEL          = 'gpt-image-2';
 
 /**
  * gpt-image-1 supported output sizes (as of April 2026).

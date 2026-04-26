@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   const modelId =
     activeProvider === 'xai'    ? (process.env.XAI_MODEL_ID    || 'grok-imagine-image') :
     activeProvider === 'vertex' ? (process.env.VERTEX_AI_MODEL_ID || 'gemini-3-pro-image-preview') :
-    (process.env.OPENAI_MODEL_ID || 'gpt-image-1');
+    (process.env.OPENAI_MODEL_ID || 'gpt-image-2');
 
   const { data: genImage, error: insertError } = await serviceClient
     .from('generated_images')
