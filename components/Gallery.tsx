@@ -295,7 +295,7 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
             </p>
           </div>
         ) : (
-          <div className="columns-2 lg:columns-3 xl:columns-4 gap-5">
+          <div className="columns-2 lg:columns-3 gap-5">
 
             {/* Edit placeholders */}
             {editEntries.map((entry) => (
