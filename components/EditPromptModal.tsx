@@ -130,9 +130,12 @@ export function EditPromptModal({
   const [launching,   setLaunching]   = useState(false);   // morph-out animation
   const [extraRefs,   setExtraRefs]   = useState<ExtraRef[]>([]);
   const [regions,     setRegions]     = useState<LassoRegion[]>([]);
+  // Track canvas bounding rect for bubble portals (avoids overflow clipping)
+  const [canvasRect,  setCanvasRect]  = useState<DOMRect | null>(null);
 
   // Refs that don't need renders
   const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const panelRef       = useRef<HTMLDivElement>(null);
   const regionsRef     = useRef<LassoRegion[]>([]);
   const activePtsRef   = useRef<Pt[]>([]);
   const isDrawingRef   = useRef(false);
@@ -152,6 +155,20 @@ export function EditPromptModal({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, submitting]);
+
+  // Track canvas bounding rect so bubbles can be portalled to body (avoids overflow clipping)
+  useEffect(() => {
+    const update = () => {
+      if (canvasRef.current) setCanvasRect(canvasRef.current.getBoundingClientRect());
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, []);
 
   // ── Canvas ────────────────────────────────────────────────────────────────
 
@@ -392,11 +409,11 @@ export function EditPromptModal({
     setLaunching(true);
     setSubmitting(true);
 
-    // ② After the CSS transition (450 ms) — collapse into placeholder
+    // ② After the keyframe animation (800 ms) — collapse into placeholder
     const morphTimer = setTimeout(() => {
       onPending(tempId, aspectRatio);   // parent: add placeholder + scroll to top
       onClose();                         // unmount modal
-    }, 450);
+    }, 800);
 
     // ③ Fire the API call in parallel — no blocking
     try {
@@ -503,65 +520,77 @@ export function EditPromptModal({
               )}
             </div>
 
-            {/* Region pins + bubbles */}
+            {/* Region pins — always rendered here (small, don't overflow) */}
             {regions.map((region) => {
-              const lx          = `${region.centroidPct.x * 100}%`;
-              const ty          = `${region.centroidPct.y * 100}%`;
-              const bubbleBelow = region.centroidPct.y < 0.55;
-
-              if (region.collapsed) {
-                return (
-                  <button
-                    key={region.id}
-                    style={{ position: 'absolute', left: lx, top: ty, transform: 'translate(-50%, -50%)', zIndex: 20 }}
-                    onClick={() => expandRegion(region.id)}
-                    title={`Region ${region.id}${region.prompt ? `: ${region.prompt}` : ' — click to edit'}`}
-                    className={cn(
-                      'w-6 h-6 rounded-full text-white text-[10px] font-bold',
-                      'flex items-center justify-center shadow-lg ring-2 ring-white hover:scale-110 transition-transform',
-                      region.color.pin,
-                    )}
-                  >
-                    {region.id}
-                  </button>
-                );
-              }
-
+              const lx = `${region.centroidPct.x * 100}%`;
+              const ty = `${region.centroidPct.y * 100}%`;
               return (
-                <div
+                <button
                   key={region.id}
-                  style={{
-                    position:  'absolute',
-                    left:      lx,
-                    top:       ty,
-                    transform: bubbleBelow ? 'translate(-50%, 6px)' : 'translate(-50%, calc(-100% - 6px))',
-                    zIndex:    30,
-                  }}
-                  className="w-48 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
+                  style={{ position: 'absolute', left: lx, top: ty, transform: 'translate(-50%, -50%)', zIndex: 20 }}
+                  onClick={() => region.collapsed ? expandRegion(region.id) : removeRegion(region.id)}
+                  title={`Region ${region.id}${region.prompt ? `: ${region.prompt}` : ' — click to edit'}`}
+                  className={cn(
+                    'w-6 h-6 rounded-full text-white text-[10px] font-bold',
+                    'flex items-center justify-center shadow-lg ring-2 ring-white hover:scale-110 transition-transform',
+                    region.color.pin,
+                    !region.collapsed && 'ring-offset-1',
+                  )}
                 >
-                  <div className="flex items-center gap-1.5 px-2.5 pt-2.5 pb-2 border-b border-gray-100">
-                    <span className={cn('w-4 h-4 min-w-[1rem] rounded-full text-white text-[9px] font-bold flex items-center justify-center shrink-0', region.color.pin)}>
-                      {region.id}
-                    </span>
-                    <span className="flex-1 text-[10px] font-semibold text-gray-700">Region {region.id}</span>
-                    <button onClick={() => removeRegion(region.id)} className="text-gray-300 hover:text-red-400 transition-colors" title="Remove">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                  <textarea
-                    value={region.prompt}
-                    onChange={(e) => handleRegionPromptChange(region.id, e.target.value)}
-                    placeholder="Describe the edit here…"
-                    rows={3}
-                    // eslint-disable-next-line jsx-a11y/no-autofocus
-                    autoFocus
-                    className="w-full text-[11px] leading-relaxed resize-none px-2.5 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none"
-                  />
-                  <p className="px-2.5 pb-2 text-[9px] text-gray-400">Collapses 2 s after you stop typing</p>
-                </div>
+                  {region.id}
+                </button>
               );
             })}
           </div>
+
+          {/* Expanded region bubbles — portalled to body so overflow clipping never applies */}
+          {mounted && canvasRect && createPortal(
+            <>
+              {regions.filter((r) => !r.collapsed).map((region) => {
+                const pinX       = canvasRect.left + region.centroidPct.x * canvasRect.width;
+                const pinY       = canvasRect.top  + region.centroidPct.y * canvasRect.height;
+                const below      = region.centroidPct.y < 0.55;
+                // Clamp horizontally so bubble never leaves the viewport
+                const bubbleW    = 192; // w-48
+                const rawLeft    = pinX - bubbleW / 2;
+                const clampedLeft = Math.max(8, Math.min(rawLeft, window.innerWidth - bubbleW - 8));
+                return (
+                  <div
+                    key={region.id}
+                    style={{
+                      position: 'fixed',
+                      left:     `${clampedLeft}px`,
+                      top:      below ? `${pinY + 8}px` : 'auto',
+                      bottom:   below ? 'auto' : `${window.innerHeight - pinY + 8}px`,
+                      zIndex:   9999,
+                    }}
+                    className="w-48 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden"
+                  >
+                    <div className="flex items-center gap-1.5 px-2.5 pt-2.5 pb-2 border-b border-gray-100">
+                      <span className={cn('w-4 h-4 min-w-[1rem] rounded-full text-white text-[9px] font-bold flex items-center justify-center shrink-0', region.color.pin)}>
+                        {region.id}
+                      </span>
+                      <span className="flex-1 text-[10px] font-semibold text-gray-700">Region {region.id}</span>
+                      <button onClick={() => removeRegion(region.id)} className="text-gray-300 hover:text-red-400 transition-colors" title="Remove">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <textarea
+                      value={region.prompt}
+                      onChange={(e) => handleRegionPromptChange(region.id, e.target.value)}
+                      placeholder="Describe the edit here…"
+                      rows={3}
+                      // eslint-disable-next-line jsx-a11y/no-autofocus
+                      autoFocus
+                      className="w-full text-[11px] leading-relaxed resize-none px-2.5 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none"
+                    />
+                    <p className="px-2.5 pb-2 text-[9px] text-gray-400">Collapses 2 s after you stop typing</p>
+                  </div>
+                );
+              })}
+            </>,
+            document.body,
+          )}
 
           {/* Region chips */}
           {hasRegions && (
@@ -709,7 +738,7 @@ export function EditPromptModal({
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ perspective: '1200px' }}>
       {/* Backdrop — fades out when launching */}
       <div
         className={cn(
@@ -719,14 +748,16 @@ export function EditPromptModal({
         onClick={!submitting ? onClose : undefined}
       />
 
-      {/* Panel — morphs into a tiny card flying to top-left on launch */}
+      {/* Panel — flips, shrinks and flies to top-left on launch */}
       <div
-        className={cn(
-          'relative w-full sm:max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden',
-          'transition-all duration-[450ms] ease-in-out',
-          launching && 'scale-[0.08] opacity-0 -translate-y-[45vh] translate-x-[-38vw] rounded-xl',
-        )}
-        style={{ maxHeight: '88vh' }}
+        ref={panelRef}
+        className="relative w-full sm:max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{
+          maxHeight: '88vh',
+          transformOrigin: 'center center',
+          willChange: 'transform, opacity',
+          animation: launching ? 'modal-launch 0.8s cubic-bezier(0.55, 0, 1, 0.45) forwards' : 'none',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
