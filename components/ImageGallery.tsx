@@ -53,8 +53,16 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
   const [editingImage,  setEditingImage] = useState<GeneratedImage | null>(null);
   const [editEntries,   setEditEntries]  = useState<EditEntry[]>([]);
   const [freshImages,   setFreshImages]  = useState<GeneratedImage[]>([]);
+  const [numCols,       setNumCols]      = useState(3);
   const entriesRef = useRef<EditEntry[]>([]);
   entriesRef.current = editEntries;
+
+  useEffect(() => {
+    const update = () => setNumCols(window.innerWidth >= 1024 ? 3 : 2);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     setStarred(loadStarred(userId));
@@ -130,81 +138,104 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
   const pendingImages   = images.filter((img) => img.status === 'queued' || img.status === 'in_progress');
   const failedImages    = images.filter((img) => img.status === 'failed'  || img.status === 'nsfw');
 
+  // Build a flat ordered list of all items to display
+  type ColItem =
+    | { kind: 'edit';    entry: EditEntry;    key: string }
+    | { kind: 'done';    image: GeneratedImage; globalIdx: number }
+    | { kind: 'pending'; image: GeneratedImage; globalIdx: number }
+    | { kind: 'failed';  image: GeneratedImage; globalIdx: number };
+
+  const allItems: ColItem[] = [
+    ...editEntries.map((e) => ({ kind: 'edit' as const, entry: e, key: e.tempId })),
+    ...completedImages.map((img, i) => ({ kind: 'done' as const, image: img, globalIdx: editEntries.length + i })),
+    ...pendingImages.map((img, i) => ({ kind: 'pending' as const, image: img, globalIdx: editEntries.length + completedImages.length + i })),
+    ...failedImages.map((img, i) => ({ kind: 'failed' as const, image: img, globalIdx: editEntries.length + completedImages.length + pendingImages.length + i })),
+  ];
+
+  // Distribute left-to-right into N columns
+  const masonryCols: ColItem[][] = Array.from({ length: numCols }, () => []);
+  allItems.forEach((item, i) => masonryCols[i % numCols].push(item));
+
   return (
     <>
-      {/* Left-to-right grid, each image at its natural aspect ratio */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 items-start">
-
-        {/* Edit placeholders */}
-        {editEntries.map((entry) => (
-          <div
-            key={entry.tempId}
-            className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
-            style={{ aspectRatio: entry.aspectRatio.replace(':', '/') }}
-          >
-            <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
-              <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
-              <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
-            </div>
-          </div>
-        ))}
-
-        {/* Completed */}
-        {completedImages.map((image, i) => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            index={i}
-            isStarred={starred.has(image.id)}
-            onStar={() => toggleStar(image.id)}
-            onDownload={() => handleDownload(image)}
-            onOpenLightbox={() => setLightboxIdx(i)}
-            onEdit={sessionId && productId ? () => setEditingImage(image) : undefined}
-          />
-        ))}
-
-        {/* Pending */}
-        {pendingImages.map((image, i) => (
-          <div
-            key={image.id}
-            className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30"
-            style={{
-              aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/'),
-              animationDelay: `${(completedImages.length + i) * 60}ms`,
-            }}
-          >
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-forest border-t-transparent mx-auto mb-2" />
-                <p className="text-sm text-brand-slate capitalize">{image.status}…</p>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {/* Failed */}
-        {failedImages.map((image, i) => (
-          <div
-            key={image.id}
-            className="stagger-item rounded-xl border border-red-200 bg-red-50"
-            style={{
-              aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/'),
-              animationDelay: `${(completedImages.length + pendingImages.length + i) * 60}ms`,
-            }}
-          >
-            <div className="w-full h-full flex items-center justify-center p-4">
-              <div className="text-center">
-                <Badge variant="destructive" className="mb-2">
-                  {image.status === 'nsfw' ? 'Content Blocked' : 'Failed'}
-                </Badge>
-                <p className="text-xs text-gray-500 mb-3">{image.error_message || 'Generation failed'}</p>
-                {onRegenerate && (
-                  <Button size="sm" variant="outline" onClick={() => onRegenerate(image)}>
-                    <RefreshCw className="mr-1 h-3 w-3" /> Retry
-                  </Button>
-                )}
-              </div>
-            </div>
+      {/* Left-to-right masonry: each image at its natural aspect ratio, no row gaps */}
+      <div className="flex gap-5 items-start">
+        {masonryCols.map((col, ci) => (
+          <div key={ci} className="flex-1 flex flex-col gap-5">
+            {col.map((item) => {
+              if (item.kind === 'edit') {
+                return (
+                  <div
+                    key={item.key}
+                    className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
+                    style={{ aspectRatio: item.entry.aspectRatio.replace(':', '/') }}
+                  >
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2.5">
+                      <div className="h-8 w-8 rounded-full border-2 border-brand-forest border-t-transparent animate-spin" />
+                      <p className="text-xs text-brand-slate/70 font-medium">Generating edit…</p>
+                    </div>
+                  </div>
+                );
+              }
+              if (item.kind === 'done') {
+                return (
+                  <ImageCard
+                    key={item.image.id}
+                    image={item.image}
+                    index={item.globalIdx}
+                    isStarred={starred.has(item.image.id)}
+                    onStar={() => toggleStar(item.image.id)}
+                    onDownload={() => handleDownload(item.image)}
+                    onOpenLightbox={() => setLightboxIdx(item.globalIdx - editEntries.length)}
+                    onEdit={sessionId && productId ? () => setEditingImage(item.image) : undefined}
+                  />
+                );
+              }
+              if (item.kind === 'pending') {
+                return (
+                  <div
+                    key={item.image.id}
+                    className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30"
+                    style={{
+                      aspectRatio: (item.image.aspect_ratio || '1:1').replace(':', '/'),
+                      animationDelay: `${item.globalIdx * 60}ms`,
+                    }}
+                  >
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-forest border-t-transparent mx-auto mb-2" />
+                        <p className="text-sm text-brand-slate capitalize">{item.image.status}…</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              // failed
+              return (
+                <div
+                  key={item.image.id}
+                  className="stagger-item rounded-xl border border-red-200 bg-red-50"
+                  style={{
+                    aspectRatio: (item.image.aspect_ratio || '1:1').replace(':', '/'),
+                    animationDelay: `${item.globalIdx * 60}ms`,
+                  }}
+                >
+                  <div className="w-full h-full flex items-center justify-center p-4">
+                    <div className="text-center">
+                      <Badge variant="destructive" className="mb-2">
+                        {item.image.status === 'nsfw' ? 'Content Blocked' : 'Failed'}
+                      </Badge>
+                      <p className="text-xs text-gray-500 mb-3">{item.image.error_message || 'Generation failed'}</p>
+                      {onRegenerate && (
+                        <Button size="sm" variant="outline" onClick={() => onRegenerate(item.image)}>
+                          <RefreshCw className="mr-1 h-3 w-3" /> Retry
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>
