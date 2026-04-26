@@ -409,11 +409,11 @@ export function EditPromptModal({
     setLaunching(true);
     setSubmitting(true);
 
-    // ② After the keyframe animation (800 ms) — collapse into placeholder
+    // ② After the keyframe animation (900 ms) — collapse into placeholder
     const morphTimer = setTimeout(() => {
       onPending(tempId, aspectRatio);   // parent: add placeholder + scroll to top
       onClose();                         // unmount modal
-    }, 800);
+    }, 900);
 
     // ③ Fire the API call in parallel — no blocking
     try {
@@ -738,27 +738,40 @@ export function EditPromptModal({
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ perspective: '1200px' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop — fades out when launching */}
       <div
         className={cn(
-          'absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-500',
+          'absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-[700ms]',
           launching && 'opacity-0 pointer-events-none',
         )}
         onClick={!submitting ? onClose : undefined}
       />
 
-      {/* Panel — flips, shrinks and flies to top-left on launch */}
+      {/*
+        Animation shell — NO overflow:hidden here so transform is never clipped.
+        This div handles all spatial movement: fly to corner + scale + rotate.
+        overflow:hidden on a transformed element creates a stacking context that
+        silently kills perspective/rotateY, so we keep the two concerns separated.
+      */}
       <div
         ref={panelRef}
-        className="relative w-full sm:max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className="relative w-full sm:max-w-2xl"
+        style={{
+          transformOrigin: 'center center',
+          willChange: 'transform, opacity',
+          animation: launching ? 'modal-launch 0.9s cubic-bezier(0.6, 0, 0.9, 0.5) forwards' : 'none',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+      {/* Inner panel — keeps overflow:hidden for design; gets the flip animation */}
+      <div
+        className="relative w-full bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         style={{
           maxHeight: '88vh',
           transformOrigin: 'center center',
-          willChange: 'transform, opacity',
-          animation: launching ? 'modal-launch 0.8s cubic-bezier(0.55, 0, 1, 0.45) forwards' : 'none',
+          animation: launching ? 'modal-panel-flip 0.9s cubic-bezier(0.6, 0, 0.9, 0.5) forwards' : 'none',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between px-5 pt-5 pb-4 shrink-0">
@@ -846,7 +859,8 @@ export function EditPromptModal({
             }
           </Button>
         </div>
-      </div>
+      </div>  {/* end inner panel */}
+      </div>  {/* end animation shell */}
     </div>,
     document.body,
   );
