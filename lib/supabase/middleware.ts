@@ -38,7 +38,10 @@ export async function updateSession(request: NextRequest) {
     !user &&
     !request.nextUrl.pathname.startsWith('/login') &&
     !request.nextUrl.pathname.startsWith('/signup') &&
-    !request.nextUrl.pathname.startsWith('/api/auth')
+    !request.nextUrl.pathname.startsWith('/api/auth') &&
+    // Webhook endpoint is called by image providers with no session cookie.
+    // Auth is handled inside the route via WEBHOOK_SECRET header instead.
+    !request.nextUrl.pathname.startsWith('/api/webhook')
   ) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';

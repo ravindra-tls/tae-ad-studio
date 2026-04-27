@@ -21,6 +21,12 @@ export async function GET(
 
   if (!genImage) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  // Enforce ownership — service client bypasses RLS so we check manually.
+  // Return 404 (not 403) to avoid leaking whether the ID exists at all.
+  if (genImage.session?.user_id !== user.id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   // Already terminal state
   if (['completed', 'failed', 'nsfw'].includes(genImage.status)) {
     return NextResponse.json({

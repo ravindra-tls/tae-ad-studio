@@ -565,7 +565,15 @@ export async function POST(request: Request) {
         // ── Stage: render (first pass) ──────────────────────────────────────
         // Create the generated_images row FIRST so failures still leave a
         // trace in the DB (parity with /api/generate/submit).
-        const modelId = process.env.XAI_MODEL_ID || 'grok-imagine-image';
+        // Derive provider + model from env — same logic as /api/generate/submit
+        // so DB rows always reflect which provider actually ran.
+        const activeProvider = (process.env.IMAGE_PROVIDER || 'openai').toLowerCase();
+        const modelId =
+          activeProvider === 'xai'    ? (process.env.XAI_MODEL_ID    || 'grok-imagine-image') :
+          activeProvider === 'vertex' ? (process.env.VERTEX_AI_MODEL_ID || 'gemini-3-pro-image-preview') :
+          (process.env.OPENAI_MODEL_ID || 'gpt-image-2');
+        const apiProvider = activeProvider === 'vertex' ? 'vertex-ai' : activeProvider;
+
         const { data: genImage, error: genErr } = await service
           .from('generated_images')
           .insert({
@@ -574,7 +582,7 @@ export async function POST(request: Request) {
             concept_id: concept.id,
             prompt_used: visualRow.prompt_text,
             aspect_ratio: aspectRatio,
-            api_provider: 'xai',
+            api_provider: apiProvider,
             model_id: modelId,
             status: 'queued',
           })
@@ -906,7 +914,7 @@ export async function POST(request: Request) {
                   concept_id: concept.id,
                   prompt_used: newVisualRow.prompt_text,
                   aspect_ratio: aspectRatio,
-                  api_provider: 'xai',
+                  api_provider: apiProvider,
                   model_id: modelId,
                   status: 'queued',
                 })

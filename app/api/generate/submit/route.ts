@@ -52,7 +52,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
   }
 
-  // 3. Assemble final prompt (skip for edits that already have an assembled prompt)
+  // 3. Verify the session belongs to this user (service client bypasses RLS,
+  //    so we must enforce ownership manually before writing to it).
+  const { data: sessionRow } = await serviceClient
+    .from('sessions')
+    .select('id')
+    .eq('id', sessionId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (!sessionRow) {
+    return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+  }
+
+  // 4. Assemble final prompt (skip for edits that already have an assembled prompt)
   let finalPrompt: string;
   if (skipAssembly) {
     finalPrompt = prompt;
@@ -69,6 +82,7 @@ export async function POST(request: Request) {
   }
 
   // 5. Create generated_image record
+  // (step numbering preserved for readability)
   // Derive provider + model from env so the DB row reflects reality.
   const activeProvider = (process.env.IMAGE_PROVIDER || 'openai').toLowerCase();
   const modelId =
