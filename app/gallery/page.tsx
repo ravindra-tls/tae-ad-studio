@@ -54,6 +54,7 @@ export default async function GalleryPage() {
     status:        img.status,
     error_message: img.error_message,
     created_at:    img.created_at,
+    template_id:   img.template_id ?? null,
     // Joined
     creator_user_id:   img.session?.user_id ?? null,
     creator_name:      img.session?.profile?.full_name ?? img.session?.profile?.email ?? 'Unknown',

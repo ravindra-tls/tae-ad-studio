@@ -218,14 +218,16 @@ async function submitEdits(
 
   for (const { buffer, mimeType } of validRefs) {
     const ext = mimeType.split('/')[1] || 'png';
-    formData.append('image[]', new Blob([buffer], { type: mimeType }), `ref.${ext}`);
+    // Wrap in Uint8Array — Buffer's ArrayBufferLike backing isn't directly
+    // assignable to BlobPart in strict TypeScript; Uint8Array always is.
+    formData.append('image[]', new Blob([new Uint8Array(buffer)], { type: mimeType }), `ref.${ext}`);
   }
 
   // Convert lasso mask → OpenAI inpainting mask (transparent = edit here)
   if (params.maskDataUrl) {
     try {
       const maskBuffer = await redMaskToOpenAIMask(params.maskDataUrl);
-      formData.append('mask', new Blob([maskBuffer], { type: 'image/png' }), 'mask.png');
+      formData.append('mask', new Blob([new Uint8Array(maskBuffer)], { type: 'image/png' }), 'mask.png');
       console.log('[OpenAI] Lasso mask attached as inpainting mask');
     } catch (err: any) {
       console.warn(`[OpenAI] Mask conversion failed — proceeding without mask: ${err.message}`);
