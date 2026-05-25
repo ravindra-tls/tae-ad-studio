@@ -2,7 +2,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
-import { UserActions } from './user-actions';
+import { UserActions, UNLIMITED_CAP } from './user-actions';
 
 // Always fetch live data — usage_count changes on every generation
 export const dynamic = 'force-dynamic';
@@ -51,7 +51,9 @@ export default async function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-medium">{user.usage_count}</span>
-                      <span className="text-gray-400">/{user.usage_cap}</span>
+                      <span className="text-gray-400">
+                        /{user.usage_cap >= UNLIMITED_CAP ? '∞' : user.usage_cap}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-gray-400">{formatDate(user.created_at)}</td>
                     <td className="px-4 py-3 text-right">
