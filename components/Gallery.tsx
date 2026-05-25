@@ -75,6 +75,14 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
     setStarred(loadStarred(currentUserId));
   }, [currentUserId]);
 
+  // Count of starred IDs that actually exist in the current image list.
+  // Using starred.size (raw localStorage count) causes a mismatch when starred
+  // images were deleted, failed, or are outside the 200-row fetch limit.
+  const starredCount = useMemo(
+    () => images.filter((img) => starred.has(img.id)).length,
+    [images, starred],
+  );
+
   const products = useMemo(() => {
     const map = new Map<string, string>();
     images.forEach((img) => {
@@ -238,9 +246,9 @@ export function Gallery({ images, currentUserId, ratedImageIds }: GalleryProps) 
             >
               {tab.icon}
               {tab.label}
-              {tab.id === 'starred' && starred.size > 0 && (
+              {tab.id === 'starred' && starredCount > 0 && (
                 <span className="ml-0.5 rounded-full bg-brand-lime/80 text-brand-forest px-1.5 text-[10px] font-bold">
-                  {starred.size}
+                  {starredCount}
                 </span>
               )}
             </button>

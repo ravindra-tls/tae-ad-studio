@@ -78,7 +78,29 @@ const EMPTY_CONTEXT: ProductContext = {
   testimonials: [],
 };
 
+// Returns true when a stored color is an empty/default placeholder (name='', hex='#000000').
+// We treat these as "not set" and fall back to color_palette values.
+function isEmptyColor(c: { name: string; hex: string } | undefined | null): boolean {
+  if (!c) return true;
+  return c.hex === '#000000' && c.name === '';
+}
+
+// Resolve a context color, falling back to the palette entry when the context
+// value is absent or is an uninitialised EMPTY_CONTEXT placeholder.
+function resolveCtxColor(
+  ctxColor: { name: string; hex: string } | undefined | null,
+  paletteEntry: { name: string; hex: string } | undefined,
+  fallback: { name: string; hex: string },
+): { name: string; hex: string } {
+  if (!isEmptyColor(ctxColor)) return ctxColor!;
+  if (paletteEntry && !isEmptyColor(paletteEntry)) return { name: paletteEntry.name, hex: paletteEntry.hex };
+  return fallback;
+}
+
 function toDraft(p: Product): Draft {
+  const ctx = (p.context ?? {}) as Partial<ProductContext>;
+  const cp  = p.color_palette ?? [];
+
   return {
     name:             p.name,
     sub_brand:        p.sub_brand ?? '',
@@ -86,8 +108,18 @@ function toDraft(p: Product): Draft {
     compliance_rules: p.compliance_rules ?? [],
     ingredients:      p.ingredients ?? [],
     claims:           p.claims ?? [],
-    color_palette:    p.color_palette ?? [],
-    context:          { ...EMPTY_CONTEXT, ...(p.context ?? {}) } as ProductContext,
+    color_palette:    cp,
+    context: {
+      ...EMPTY_CONTEXT,
+      ...ctx,
+      // Use resolveCtxColor so stored '#000000'/blank placeholders fall back to color_palette
+      primary_color:    resolveCtxColor(ctx.primary_color,    cp[0], EMPTY_CONTEXT.primary_color!),
+      accent_color:     resolveCtxColor(ctx.accent_color,     cp[1], EMPTY_CONTEXT.accent_color!),
+      contrast_color:   resolveCtxColor(ctx.contrast_color,   cp[2], EMPTY_CONTEXT.contrast_color!),
+      tint_color:       resolveCtxColor(ctx.tint_color,       cp[3], EMPTY_CONTEXT.tint_color!),
+      dark_color:       resolveCtxColor(ctx.dark_color,       cp[4], EMPTY_CONTEXT.dark_color!),
+      background_color: resolveCtxColor(ctx.background_color, cp[5], EMPTY_CONTEXT.background_color!),
+    } as ProductContext,
     thumbnail_url:    p.thumbnail_url ?? '',
   };
 }
@@ -933,6 +965,12 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
   const d = draft;
   const c = d?.context ?? ctx;
 
+  // In view mode, ctx colors may be stored as EMPTY_CONTEXT placeholders (#000000/blank).
+  // Compute display-safe colors that fall back to color_palette when that happens.
+  const cp = product.color_palette ?? [];
+  const displayColor = (field: keyof ProductContext, paletteIdx: number) =>
+    resolveCtxColor(c?.[field] as any, cp[paletteIdx], EMPTY_CONTEXT[field] as any);
+
   return (
     <div className="flex gap-5 items-start">
 
@@ -1204,12 +1242,12 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
 
         {/* ── Brand Colors ── */}
         <Section title="Brand Colors" badge={c ? 6 : product.color_palette?.length}>
-          <ColorRow label="Primary"    color={c?.primary_color    ?? (product.color_palette?.[0] as any)} editMode={editMode} onEdit={(v) => setColor('primary_color', v)} info="Used as [BRAND COLOR] in every image prompt. Sets the dominant visual tone of all generated creatives." />
-          <ColorRow label="Accent"     color={c?.accent_color     ?? (product.color_palette?.[1] as any)} editMode={editMode} onEdit={(v) => setColor('accent_color', v)}  info="Used as [ACCENT COLOR] in image prompts. Applied to highlights, buttons, and secondary design elements." />
-          <ColorRow label="Contrast"   color={c?.contrast_color   ?? (product.color_palette?.[2] as any)} editMode={editMode} onEdit={(v) => setColor('contrast_color', v)} info="Used as [CONTRAST COLOR]. Applied to text overlays and elements that need visual separation from the background." />
-          <ColorRow label="Tint"       color={c?.tint_color}                                              editMode={editMode} onEdit={(v) => setColor('tint_color', v)}     info="A lighter tint of the primary used for soft backgrounds, overlays, and skin-tone-safe gradient elements." />
-          <ColorRow label="Dark"       color={c?.dark_color}                                              editMode={editMode} onEdit={(v) => setColor('dark_color', v)}     info="Used for dark backgrounds, deep shadows, and rich contrast areas in generated product images." />
-          <ColorRow label="Background" color={c?.background_color ?? (product.color_palette?.[3] as any)} editMode={editMode} onEdit={(v) => setColor('background_color', v)} info="Sets the background tone in image prompts and scene descriptions. Keeps the visual palette consistent." />
+          <ColorRow label="Primary"    color={editMode ? c?.primary_color    : displayColor('primary_color',    0)} editMode={editMode} onEdit={(v) => setColor('primary_color', v)}    info="Used as [BRAND COLOR] in every image prompt. Sets the dominant visual tone of all generated creatives." />
+          <ColorRow label="Accent"     color={editMode ? c?.accent_color     : displayColor('accent_color',     1)} editMode={editMode} onEdit={(v) => setColor('accent_color', v)}     info="Used as [ACCENT COLOR] in image prompts. Applied to highlights, buttons, and secondary design elements." />
+          <ColorRow label="Contrast"   color={editMode ? c?.contrast_color   : displayColor('contrast_color',   2)} editMode={editMode} onEdit={(v) => setColor('contrast_color', v)}   info="Used as [CONTRAST COLOR]. Applied to text overlays and elements that need visual separation from the background." />
+          <ColorRow label="Tint"       color={editMode ? c?.tint_color       : displayColor('tint_color',       3)} editMode={editMode} onEdit={(v) => setColor('tint_color', v)}       info="A lighter tint of the primary used for soft backgrounds, overlays, and skin-tone-safe gradient elements." />
+          <ColorRow label="Dark"       color={editMode ? c?.dark_color       : displayColor('dark_color',       4)} editMode={editMode} onEdit={(v) => setColor('dark_color', v)}       info="Used for dark backgrounds, deep shadows, and rich contrast areas in generated product images." />
+          <ColorRow label="Background" color={editMode ? c?.background_color : displayColor('background_color', 5)} editMode={editMode} onEdit={(v) => setColor('background_color', v)} info="Sets the background tone in image prompts and scene descriptions. Keeps the visual palette consistent." />
         </Section>
 
         {/* ── Benefits ── */}

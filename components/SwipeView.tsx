@@ -207,6 +207,10 @@ export function SwipeView({ images }: SwipeViewProps) {
   // ── Visible cards ─────────────────────────────────────────────────────────
   const visibleCards = images.slice(topIndex, topIndex + STACK_VISIBLE).reverse(); // bottom-first render
 
+  // ── Card dimensions — fixed 9:16 (portrait story format), no layout shift ──
+  const CARD_W = 320;                        // px — matches sm:w-80
+  const CARD_H = Math.round(CARD_W * 16 / 9); // 568px
+
   return (
     <div className="flex flex-col items-center gap-8 py-4 select-none">
 
@@ -224,7 +228,10 @@ export function SwipeView({ images }: SwipeViewProps) {
       </div>
 
       {/* ── Card stack ───────────────────────────────────────────────── */}
-      <div className="relative w-80 h-[480px] sm:w-96 sm:h-[540px]">
+      <div
+        className="relative"
+        style={{ width: CARD_W, height: CARD_H }}
+      >
 
         {finished ? (
           /* All done */
@@ -276,19 +283,38 @@ export function SwipeView({ images }: SwipeViewProps) {
                 onPointerUp={isTop && !isHinting ? onPointerUp : undefined}
                 onPointerCancel={isTop && !isHinting ? onPointerUp : undefined}
               >
-                {/* Image */}
+                {/* Blurred zoom background — fills dead space like Instagram Stories */}
+                {image.image_url && (
+                  <div className="absolute inset-0 overflow-hidden">
+                    <Image
+                      src={image.image_url}
+                      alt=""
+                      fill
+                      sizes={`${CARD_W}px`}
+                      className="object-cover pointer-events-none select-none"
+                      style={{ transform: 'scale(1.15)', filter: 'blur(28px)', opacity: 0.85 }}
+                      draggable={false}
+                      aria-hidden
+                    />
+                    {/* Dark scrim so blurred bg doesn't overpower the image */}
+                    <div className="absolute inset-0 bg-black/25" />
+                  </div>
+                )}
+
+                {/* Main image — object-contain so any ratio shows in full */}
                 {image.image_url && (
                   <Image
                     src={image.image_url}
                     alt="Generated ad"
                     fill
-                    className="object-cover pointer-events-none"
+                    sizes={`${CARD_W}px`}
+                    className="object-contain pointer-events-none select-none"
                     draggable={false}
                   />
                 )}
 
                 {/* Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
 
                 {/* LIKE stamp */}
                 {isTop && (

@@ -70,8 +70,7 @@ export function PromptWorkspace({
   const [modalPrompt,     setModalPrompt]     = useState('');
   const [modalRatio,      setModalRatio]      = useState('');
 
-  // Placeholder review panel state
-  const [showPlaceholderReview, setShowPlaceholderReview] = useState(false);
+  // (placeholder review panel removed — tokens are AI-filled at generate time)
 
   // Session-level uploaded reference images (from product selection step)
   const [sessionRefImages, setSessionRefImages] = useState<{ id: string; dataUrl: string; name: string }[]>([]);
@@ -131,7 +130,7 @@ export function PromptWorkspace({
   const router = useRouter();
 
   /* ── helpers ── */
-  const PLACEHOLDER_RE = /\[[A-Z][A-Z0-9 _/—–\-\+\.',:!?()&]+\]/g;
+  const PLACEHOLDER_RE = /\[[A-Z][A-Za-z0-9 _/—–\-\+\.',:!?()&]+\]/g;
 
   const getPrompt = (t: PromptTemplate) =>
     editedPrompts[t.id] ?? fillTemplate(t.template, product);
@@ -150,11 +149,22 @@ export function PromptWorkspace({
   const getRatio = (t: PromptTemplate) =>
     editedRatios[t.id] ?? t.default_aspect_ratio;
 
-  /** Effective reference images for a template: per-template overrides > session uploads */
+  /** Product-level fallback images (reference images + thumbnail) — used when no user uploads exist */
+  const productFallbackImages: RefImage[] = [
+    ...referenceImages
+      .filter((img) => img.url)
+      .map((img) => ({ id: img.id, dataUrl: img.url!, name: img.label || 'Product reference' })),
+    ...(product.thumbnail_url
+      ? [{ id: 'product-thumb', dataUrl: product.thumbnail_url, name: product.name }]
+      : []),
+  ];
+
+  /** Effective reference images for a template: per-template overrides > session uploads > product images */
   const getEffectiveImages = (templateId: string): RefImage[] => {
     const perTemplate = templateImages[templateId];
     if (perTemplate && perTemplate.length > 0) return perTemplate;
-    return sessionRefImages;
+    if (sessionRefImages.length > 0) return sessionRefImages;
+    return productFallbackImages;
   };
 
   const filtered =
@@ -216,24 +226,20 @@ export function PromptWorkspace({
     } catch { /* ignore parse errors */ }
   }, [session.id]);
 
-  // Lock body scroll + Escape to close for any modal
+  // Lock body scroll + Escape to close edit modal
   useEffect(() => {
-    const anyOpen = !!editingTemplate || showPlaceholderReview;
-    if (!anyOpen) return;
+    if (!editingTemplate) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (editingTemplate) closeModal();
-        if (showPlaceholderReview) setShowPlaceholderReview(false);
-      }
+      if (e.key === 'Escape') closeModal();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
     };
-  }, [editingTemplate, showPlaceholderReview, closeModal]);
+  }, [editingTemplate, closeModal]);
 
   /* ── generate ── */
   const selectedTemplates = templates.filter((t) => selectedIds.has(t.id));
@@ -241,11 +247,8 @@ export function PromptWorkspace({
   const handleGenerate = useCallback(async () => {
     if (selectedTemplates.length === 0 || isSubmitting) return;
 
-    // Block if any selected template has unresolved placeholders
-    if (templatesWithPlaceholders.length > 0) {
-      setShowPlaceholderReview(true);
-      return;
-    }
+    // Any remaining [PLACEHOLDER] tokens are auto-filled by Claude server-side
+    // via aiEnrichPrompt() — no manual review required before generating.
 
     setIsSubmitting(true);
     const MIN_DISPLAY_MS = 6000; // keep loading screen for at least 6 seconds
@@ -253,10 +256,13 @@ export function PromptWorkspace({
 
     try {
       const jobs = selectedTemplates.map((t) => {
-        // Priority: per-template images > session uploads > product-level reference images
+        // Priority: per-template images > session uploads > product reference images > product thumbnail
         const perTemplateImgs = templateImages[t.id]?.map((img) => img.dataUrl) || [];
         const sessionImgUrls = sessionRefImages.map((img) => img.dataUrl);
-        const productImgUrls = referenceImages.map((img) => img.url);
+        const productImgUrls = [
+          ...referenceImages.map((img) => img.url).filter(Boolean) as string[],
+          ...(product.thumbnail_url ? [product.thumbnail_url] : []),
+        ];
         const refUrls = perTemplateImgs.length > 0
           ? perTemplateImgs
           : sessionImgUrls.length > 0
@@ -341,7 +347,7 @@ export function PromptWorkspace({
       setGenerateComplete(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplates, session.id, product, referenceImages, router, isSubmitting, templatesWithPlaceholders]);
+  }, [selectedTemplates, session.id, product, referenceImages, router, isSubmitting]);
 
   /* ── render ── */
   return (
@@ -442,6 +448,12 @@ export function PromptWorkspace({
           {sessionRefImages.length > 0 && (
             <span className="text-[10px] text-brand-slate/60">
               {sessionRefImages.length} image{sessionRefImages.length > 1 ? 's' : ''} — applied to all templates by default
+            </span>
+          )}
+          {sessionRefImages.length === 0 && productFallbackImages.length > 0 && (
+            <span className="text-[10px] text-brand-slate/50 flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-sage/60 shrink-0" />
+              {productFallbackImages.length} product image{productFallbackImages.length > 1 ? 's' : ''} will be used as reference
             </span>
           )}
         </div>
@@ -549,8 +561,11 @@ export function PromptWorkspace({
                   {getRatio(template)}
                 </span>
                 {hasPlaceholders && (
-                  <span className="animate-badge-pop text-[10px] font-medium text-amber-700 bg-amber-100 border border-amber-300/60 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                    <AlertTriangle className="h-2.5 w-2.5" /> placeholders
+                  <span
+                    className="animate-badge-pop text-[10px] font-medium text-brand-forest/70 bg-brand-lime/20 border border-brand-lime/40 px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                    title="Some tokens in this template will be filled by Claude using product context"
+                  >
+                    <Sparkles className="h-2.5 w-2.5" /> AI fills
                   </span>
                 )}
                 {isEdited && (
@@ -676,7 +691,7 @@ export function PromptWorkspace({
                   </span>
                 </div>
                 <div className="px-3 py-3">
-                  {/* Existing images */}
+                  {/* Existing per-template images */}
                   {(templateImages[editingTemplate.id] || []).length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {(templateImages[editingTemplate.id] || []).map((img) => (
@@ -697,6 +712,27 @@ export function PromptWorkspace({
                           </button>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Product fallback images — shown when no per-template images are set */}
+                  {(templateImages[editingTemplate.id] || []).length === 0 && productFallbackImages.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-[10px] text-brand-slate/50 mb-2 flex items-center gap-1">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-sage/60 shrink-0" />
+                        Auto-applying product images — upload above to override per template
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {productFallbackImages.map((img) => (
+                          <img
+                            key={img.id}
+                            src={img.dataUrl}
+                            alt={img.name}
+                            title={img.name}
+                            className="h-16 w-16 rounded-lg border border-brand-sage/20 object-cover opacity-50"
+                          />
+                        ))}
+                      </div>
                     </div>
                   )}
                   {/* Upload button */}
@@ -809,111 +845,6 @@ export function PromptWorkspace({
         </div>
       )}
 
-      {/* ── Placeholder review panel ── */}
-      {showPlaceholderReview && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{
-            animation: 'overlayIn 0.2s ease forwards',
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
-          }}
-          onClick={() => setShowPlaceholderReview(false)}
-        >
-          <div
-            className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[85vh]"
-            style={{ animation: 'modalIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-brand-sage/20 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
-                  <AlertTriangle className="h-5 w-5 text-amber-600" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-brand-black">Unresolved Placeholders</h2>
-                  <p className="text-xs text-brand-slate mt-0.5">
-                    These templates have placeholder values that need to be filled in before generating.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowPlaceholderReview(false)}
-                className="rounded-lg p-1.5 text-brand-slate hover:bg-brand-cream hover:text-brand-forest"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Template list */}
-            <div className="flex-1 overflow-y-auto scroll-spring px-6 py-4 space-y-4">
-              {templatesWithPlaceholders.length === 0 ? (
-                <div className="py-8 text-center">
-                  <Check className="h-8 w-8 mx-auto text-brand-green mb-2" />
-                  <p className="text-sm font-medium text-brand-forest">All placeholders resolved!</p>
-                  <p className="text-xs text-brand-slate mt-1">You can now generate images.</p>
-                </div>
-              ) : (
-                templatesWithPlaceholders.map(({ template: t, placeholders }) => (
-                  <div
-                    key={t.id}
-                    className="rounded-xl border border-amber-200 bg-amber-50/50 overflow-hidden"
-                  >
-                    {/* Template header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-amber-200/60">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[11px] font-bold text-brand-lime">#{t.number}</span>
-                        <h3 className="text-sm font-semibold text-brand-black truncate">{t.name}</h3>
-                        <Badge variant="secondary" className="text-[10px] shrink-0">{t.category}</Badge>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          setShowPlaceholderReview(false);
-                          openEdit(e, t);
-                        }}
-                        className="filter-pill flex items-center gap-1 shrink-0 rounded-md border border-brand-forest/30 bg-white px-2.5 py-1 text-[11px] font-medium text-brand-forest hover:bg-brand-cream hover:border-brand-forest/50"
-                      >
-                        <Pencil className="h-3 w-3" />
-                        Edit prompt
-                      </button>
-                    </div>
-                    {/* Placeholder pills */}
-                    <div className="px-4 py-3 flex flex-wrap gap-1.5">
-                      {placeholders.map((ph, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center rounded-md bg-amber-100 border border-amber-300/60 px-2 py-0.5 text-[10px] font-mono font-medium text-amber-800"
-                        >
-                          {ph}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between border-t border-brand-sage/20 px-6 py-4">
-              <p className="text-xs text-brand-slate">
-                Click <strong>Edit prompt</strong> to resolve placeholders, or remove the template from selection.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowPlaceholderReview(false)}
-                className="transition-[transform,box-shadow] duration-150 hover:scale-[1.03] active:scale-95"
-                style={{ transitionTimingFunction: 'var(--spring)' }}
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Floating generate bar ── */}
       <div
         className={cn(
@@ -941,15 +872,12 @@ export function PromptWorkspace({
               </span>
               {selectedIds.size === 1 ? ' template selected' : ' templates selected'}
             </span>
-            {/* Placeholder warning button */}
+            {/* AI-fill info — shown when selected templates have remaining tokens */}
             {templatesWithPlaceholders.length > 0 && (
-              <button
-                onClick={() => setShowPlaceholderReview(true)}
-                className="filter-pill flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 hover:border-amber-400"
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-                {templatesWithPlaceholders.length} {templatesWithPlaceholders.length === 1 ? 'template needs' : 'templates need'} review
-              </button>
+              <span className="flex items-center gap-1 text-xs text-brand-slate/50">
+                <Sparkles className="h-3 w-3" />
+                Claude fills tokens
+              </span>
             )}
           </div>
           <div className="flex items-center gap-3">

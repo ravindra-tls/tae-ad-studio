@@ -11,7 +11,7 @@
  */
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getGeneratedFileExtension, imageProvider } from '@/lib/image-providers';
-import { assemblePrompt } from '@/lib/prompt-assembler';
+import { assemblePrompt, aiEnrichPrompt } from '@/lib/prompt-assembler';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -78,7 +78,10 @@ export async function POST(request: Request) {
 
     if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
-    finalPrompt = assemblePrompt(product, prompt, aspectRatio || '1:1');
+    // AI-enrich any remaining [PLACEHOLDER] tokens the static map couldn't fill
+    const enrichedPrompt = await aiEnrichPrompt(prompt, product);
+
+    finalPrompt = assemblePrompt(product, enrichedPrompt, aspectRatio || '1:1');
   }
 
   // 5. Create generated_image record

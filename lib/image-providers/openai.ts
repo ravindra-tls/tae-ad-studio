@@ -59,16 +59,39 @@ function resolveSize(aspectRatio: string): string {
 // ─── Image helpers ────────────────────────────────────────────────────────────
 
 /**
- * Fetch a reference image from either a public URL or a base64 data URI.
+ * Fetch a reference image from a public URL, a relative Next.js public-folder
+ * path (e.g. /product_images/foo.webp), or a base64 data URI.
  * Returns a Buffer and the detected MIME type.
  */
 async function fetchImageAsBuffer(src: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  // base64 data URI
   if (src.startsWith('data:')) {
     const match = src.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) throw new Error('Invalid data URI for reference image');
     return { buffer: Buffer.from(match[2], 'base64'), mimeType: match[1] };
   }
 
+  // Relative path (e.g. /product_images/rufolia.webp stored by seedProductThumbnails).
+  // fetch() cannot handle relative URLs server-side — read directly from the
+  // Next.js public folder on the filesystem instead.
+  if (src.startsWith('/') && !src.startsWith('//')) {
+    const { readFile } = await import('fs/promises');
+    const { join }     = await import('path');
+    const filePath = join(process.cwd(), 'public', src);
+    const buffer   = await readFile(filePath);
+    const ext      = src.split('.').pop()?.toLowerCase() ?? 'png';
+    const mimeMap: Record<string, string> = {
+      webp: 'image/webp',
+      jpg:  'image/jpeg',
+      jpeg: 'image/jpeg',
+      png:  'image/png',
+      gif:  'image/gif',
+      avif: 'image/avif',
+    };
+    return { buffer, mimeType: mimeMap[ext] ?? 'image/png' };
+  }
+
+  // Absolute HTTP URL
   const res = await fetch(src);
   if (!res.ok) throw new Error(`Failed to fetch reference image (HTTP ${res.status}): ${src}`);
   const mimeType = res.headers.get('content-type')?.split(';')[0] || 'image/png';
@@ -183,9 +206,17 @@ async function submitEdits(
     }),
   );
 
-  for (const fetched of fetchedRefs) {
-    if (!fetched) continue;
-    const { buffer, mimeType } = fetched;
+  const validRefs = fetchedRefs.filter(Boolean) as { buffer: Buffer; mimeType: string }[];
+
+  // If every reference image failed to load, avoid calling the edits endpoint
+  // with no images (which returns OpenAI 400 "Missing required parameter: image").
+  // Fall back to pure text-to-image generation instead.
+  if (validRefs.length === 0) {
+    console.warn('[OpenAI] All reference images failed to load — falling back to /generations');
+    return submitGenerations(apiKey, modelId, size, params);
+  }
+
+  for (const { buffer, mimeType } of validRefs) {
     const ext = mimeType.split('/')[1] || 'png';
     formData.append('image[]', new Blob([buffer], { type: mimeType }), `ref.${ext}`);
   }

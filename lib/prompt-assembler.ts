@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import type { Product, ProductContext } from '@/types';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -14,6 +15,56 @@ function stat(ctx: ProductContext | null, i: number): string {
   const s = ctx?.stats?.[i - 1];
   return s ? `${s.value} ${s.label}` : '';
 }
+
+function statLabel(ctx: ProductContext | null, i: number): string {
+  return ctx?.stats?.[i - 1]?.label ?? '';
+}
+
+/** Tokens that require external campaign/competitor data — never auto-fill these */
+export const AI_SKIP_TOKENS = new Set([
+  // Promotional — campaign-specific
+  '[DISCOUNT like 40%]',
+  '[PROMO CODE]',
+  '[YOUR OFFER like Free Shipping over $50]',
+  '[YOUR OFFER like YOUR FIRST MONTH FREE]',
+  '[URGENCY PHRASE like Limited Offer]',
+  '[OFFER DETAIL]',
+  '[PROMO TEXT like HUGE SALE + FREE GIFTS]',
+  '[PROMO like BLACK FRIDAY SPECIAL]',
+  // Competitor — requires separate research
+  '[COMPETITOR CATEGORY]',
+  '[COMPETITOR CATEGORY like Other chocolate bars]',
+  '[WEAKNESS 1]', '[WEAKNESS 2]', '[WEAKNESS 3]', '[WEAKNESS 4]', '[WEAKNESS 5]',
+  '[WEAKNESS 1-5]',
+  '[WEAKNESS 1-4 like 29G SUGAR / FULL OF FRUCTOSE CORN SYRUP / 1G FIBRE / 2G PROTEIN]',
+  '[STRENGTH 1]', '[STRENGTH 2]', '[STRENGTH 3]', '[STRENGTH 4]', '[STRENGTH 5]',
+  '[STRENGTH 1-5]',
+  '[COMPETITOR WEAKNESS like Doesn\'t even taste good.]',
+  '[COMPETITOR WEAKNESS like Pesticide corn.]',
+  '[COMPETITOR WEAKNESS like Uses seed oils.]',
+  '[YOUR ADVANTAGE like Organic corn.]',
+  '[YOUR ADVANTAGE like Tastes amazing.]',
+  '[YOUR ADVANTAGE like Uses beef tallow.]',
+  // UGC credibility — must be real, not generated
+  '[CREDENTIAL]',
+  '[HELPFULNESS COUNT]',
+  '[HELPFULNESS COUNT — e.g., 150 / 2.4K]',
+  '[PLATFORM like Reddit]',
+  '[PLATFORM like Reddit / Twitter / X]',
+  '[POST DETAILS like subreddit name, username, timestamp, upvote count]',
+  // Product variants — needs real product variant data
+  '[COLOR-CODED VARIANT]',
+  '[VARIETY 1-4 like CHICKEN & YAMS / BEEF N\' RICE / SALMON N\' RICE / TURKEY & YAMS]',
+  '[PRODUCT VARIANTS like folded pairs of shorts/pants]',
+  // Brand assets — cannot be generated from text
+  '[BRAND ICON]',
+  '[BRAND LOGO]',
+  // Requires competitor research
+  '[COMPETITOR PRODUCT]',
+  // Campaign/promotion-specific — must be set per campaign
+  '[OFFER DETAILS]',
+  '[VALUE ADDS]',
+]);
 
 // ─── fillTemplate ────────────────────────────────────────────────────────────
 
@@ -38,9 +89,16 @@ export function fillTemplate(template: string, product: Product): string {
   const topStat  = product.claims?.[0]?.stat ?? product.claims?.[1]?.stat ?? '';
   const heroIngr = product.ingredients?.find((i) => i.key)?.name ?? 'natural botanicals';
 
-  // Testimonials
-  const t0 = ctx?.testimonials?.[0];
-  const t1 = ctx?.testimonials?.[1];
+  // Testimonials — pick randomly so each generation pulls a different review
+  const testimonials = ctx?.testimonials ?? [];
+  const t0Idx = testimonials.length > 0
+    ? Math.floor(Math.random() * testimonials.length)
+    : -1;
+  const t0 = t0Idx >= 0 ? testimonials[t0Idx] : undefined;
+  const t1Candidates = testimonials.filter((_, i) => i !== t0Idx);
+  const t1 = t1Candidates.length > 0
+    ? t1Candidates[Math.floor(Math.random() * t1Candidates.length)]
+    : undefined;
 
   // ── replacement map ───────────────────────────────────────────────────────
 
@@ -215,6 +273,236 @@ export function fillTemplate(template: string, product: Product): string {
                                         'Results may vary. Individual results not guaranteed.',
     '[TRUST BADGE like "100% MONEY BACK / 90 DAYS / 100% GUARANTEE"]': '30-Day Money-Back Guarantee',
     '[TRUST BADGE like circular seal reading "Happiness 60 DAY Guaranteed"]': '30-Day Money-Back Guarantee',
+
+    // ── Stat labels ────────────────────────────────────────────────────────
+    '[LABEL like PROTEIN]':   statLabel(ctx, 1),
+    '[METRIC LABEL 1]':       statLabel(ctx, 1),
+    '[METRIC LABEL 2]':       statLabel(ctx, 2),
+    '[METRIC LABEL 3]':       statLabel(ctx, 3),
+    '[METRIC LABEL 4]':       statLabel(ctx, 4),
+
+    // ── Pull-quote highlights ──────────────────────────────────────────────
+    '[HIGHLIGHTED PHRASE 1]': t0?.pull_quote ? `"${t0.pull_quote}"` : '',
+    '[HIGHLIGHTED PHRASE 2]': t1?.pull_quote
+      ? `"${t1.pull_quote}"`
+      : (t0?.pull_quote ? `"${t0.pull_quote}"` : ''),
+
+    // ── Problem visual ─────────────────────────────────────────────────────
+    '[PROBLEM VISUAL]':                               ctx?.before_state ?? '',
+    '[PROBLEM VISUAL like dry cracked skin]':         ctx?.before_state ?? '',
+
+    // ── Before date (editorial/post-it templates) ──────────────────────────
+    '[BEFORE DATE like "Before Jan 15"]': `Before ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+
+    // ── Person description (derived from target audience) ──────────────────
+    '[PERSON]':               ctx?.target_audience ?? 'person',
+    '[PERSON\'S HAND]':       ctx?.target_audience ? `hand of a ${ctx.target_audience}` : 'hand',
+    '[PERSON DESCRIPTION like woman in her 40s with visible fine lines and tired eyes]':
+                              ctx?.target_audience ?? 'person',
+    '[LIFESTYLE PHOTO DESCRIPTION like woman in her 40s applying cream in a well-lit bathroom]':
+                              ctx?.target_audience
+                                ? `${ctx.target_audience} in a ${ctx?.setting ?? 'lifestyle setting'}`
+                                : '',
+
+    // ── Color / styling ────────────────────────────────────────────────────
+    '[CONTRAST TEXT]':        colorStr(contrastColor ?? primaryColor),
+    '[HIGHLIGHT COLOR]':      colorStr(accentColor ?? primaryColor),
+    '[BADGE COLOR]':          colorStr(primaryColor),
+
+    // ── Transformation scene ───────────────────────────────────────────────
+    '[TRANSFORMATION SCENE]': ctx?.before_state && ctx?.after_state
+      ? `transitioning from ${ctx.before_state} to ${ctx.after_state}`
+      : (ctx?.after_state ?? ''),
+
+    // ── Action (usage) ─────────────────────────────────────────────────────
+    '[ACTION like applying cream]':
+      ctx?.product_category
+        ? `applying ${ctx.product_category.toLowerCase()}`
+        : 'using the product',
+    '[ACTION like woman gently applying the product]':
+      ctx?.product_category
+        ? `gently applying ${ctx.product_category.toLowerCase()}`
+        : 'gently applying the product',
+
+    // ── Ingredient visuals ─────────────────────────────────────────────────
+    '[INGREDIENT VISUAL like turmeric root]':
+      product.ingredients?.filter((i) => i.key).map((i) => i.name).join(', ') || heroIngr,
+    '[INGREDIENT VISUAL like turmeric root and black pepper]':
+      product.ingredients?.filter((i) => i.key).map((i) => i.name).slice(0, 3).join(' and ') || heroIngr,
+
+    // ── Headline / claim variants (direct-mappable subset) ─────────────────
+    '[SUPERLATIVE CLAIM like "The #1 Weight Loss Tea in the US"]':
+      ctx?.social_proof ?? topClaim,
+    '[VALUE PROP like "Clinically tested. 110 women. 90% saw results."]':
+      ctx?.social_proof ?? benefit(ctx, 1),
+    '[PROOF STATEMENT like "Backed by 3 clinical studies"]':
+      ctx?.social_proof ?? topStat,
+    '[BOLD STATEMENT like "I went from barely moving to hiking 10 miles a day"]':
+      ctx?.hero_headline ?? topClaim,
+
+    // ── Date / time ───────────────────────────────────────────────────────
+    '[DATE]': new Date().toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric',
+    }),
+    '[DATE like 13 July 2023 10:44]': new Date().toLocaleString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }),
+    '[TIME like 10:45]': new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }),
+    '[TIMESTAMP like 2d]': '2d',
+
+    // ── Static UI chrome ──────────────────────────────────────────────────
+    '[READ MORE like ...Read more]':           '...Read more',
+    '[STAR RATING like five gold stars]':      'five gold stars',
+    '[VERIFIED ICON like blue checkmark]':     'blue checkmark',
+
+    // ── Additional color variants ──────────────────────────────────────────
+    '[HIGHLIGHT COLOR like bright lime green / neon yellow]': colorStr(accentColor ?? primaryColor),
+    '[BADGE COLOR like lime green with dark text]':           colorStr(accentColor ?? primaryColor),
+    '[LOGO COLOR like black]':                                colorStr(darkColor ?? primaryColor),
+    '[ARROW COLOR like black]':                               colorStr(darkColor ?? primaryColor),
+    '[TEXT COLOR like dark brown]':                           colorStr(darkColor ?? primaryColor),
+    '[TEXT COLOR like white or black]':                       'white',
+    '[POST-IT COLOR — yellow default]':                       colorStr(accentColor) || 'yellow',
+    '[TAPE COLOR — clear / yellow / white]':                  'clear',
+
+    // ── Additional headline / claim variants ──────────────────────────────
+    '[HEADLINE like Join 1,000,000+ Members]':               ctx?.social_proof ?? topClaim,
+    '[HEADLINE like 24/7 PEAK FEMALE PERFORMANCE]':          ctx?.hero_headline ?? ctx?.short_headline ?? topClaim,
+    '[HEADLINE like INCREDIBLY TASTY BREAKFAST IN 30 SECONDS]': ctx?.hero_headline ?? topClaim,
+    '[HEADLINE like So tasty you\'ll forget it\'s actually healthy.]': ctx?.hero_headline ?? topClaim,
+    '[HEADLINE like A protein bar that tastes like freshly baked raspberry donuts]': ctx?.hero_headline ?? topClaim,
+    '[HEADLINE like Made for the pickiest dogs]':             ctx?.hero_headline ?? topClaim,
+    '[CLEAN LABEL CLAIM like NO ARTIFICIAL SWEETENERS]':     topClaim,
+    '[BENEFIT STATEMENT like Barista grade coffee. Instant. Affordable.]':
+      [benefit(ctx, 1), benefit(ctx, 2), benefit(ctx, 3)].filter(Boolean).join('. ') || topClaim,
+    '[CALLOUT 1-4 like NO sugar or calories / Multiple Flavors / Iced, cold or hot / Smooth and delicious]':
+      [benefit(ctx,1), benefit(ctx,2), benefit(ctx,3), benefit(ctx,4)].filter(Boolean).join(' / '),
+    '[COUNT like 33]':                         ctx?.review_count ?? ctx?.social_proof ?? '',
+    '[NUMBER like five]':                      ctx?.stats?.[0]?.value ?? 'five',
+    '[NUMBER like three]':                     ctx?.stats?.[1]?.value ?? 'three',
+    '[VALUE PROP like ALL IN ONE]':            benefit(ctx, 1) || ctx?.tagline || topClaim,
+
+    // ── Additional label variants ─────────────────────────────────────────
+    '[LABEL like 5 STAR REVIEWS]':    ctx?.review_count ? `${ctx.review_count} 5-Star Reviews` : '5 Star Reviews',
+    '[LABEL like 5-STAR REVIEWS]':    ctx?.review_count ? `${ctx.review_count} 5-Star Reviews` : '5-Star Reviews',
+    '[LABEL like HAPPY CUSTOMERS]':   ctx?.review_count ? `${ctx.review_count} Happy Customers` : 'Happy Customers',
+    '[LABEL like CALORIES]':          '',
+    '[LABEL like FLAVORS]':           '',
+
+    // ── Description / scene variants ──────────────────────────────────────
+    '[DESCRIPTION like crumpled foil-wrapped chocolate bar]':
+      ctx?.product_description ?? product.description ?? product.name,
+    '[REAL-LIFE SETTING — e.g. warm kitchen floor / bathroom counter / living room coffee table]':
+      ctx?.setting ?? 'bathroom counter',
+
+    // ── Highlighted phrase exact variants ─────────────────────────────────
+    '[HIGHLIGHTED PHRASE 1 like thyroid removed]':
+      t0?.pull_quote ? `"${t0.pull_quote}"` : '',
+    '[HIGHLIGHTED PHRASE 2 like This is the best product I have found.]':
+      t1?.pull_quote ? `"${t1.pull_quote}"` : (t0?.pull_quote ? `"${t0.pull_quote}"` : ''),
+
+    // ── Product visual variants ───────────────────────────────────────────
+    '[YOUR PRODUCT like branded shaker cup]':          ctx?.product_description ?? product.name,
+    '[YOUR PRODUCT like the signature bright yellow popper bowl overflowing with fluffy popcorn]':
+                                                       ctx?.product_description ?? product.name,
+    '[PRODUCTS like supplement jars]':                 ctx?.product_description ?? product.name,
+    '[PACKAGING like branded gift box]':               ctx?.product_description ?? product.name,
+    '[PACKAGING like retail box]':                     ctx?.product_description ?? product.name,
+    '[LOOSE UNITS like gummies / capsules]':           product.ingredients?.filter((i) => i.key)?.[0]?.name ?? 'capsules',
+
+    // ── Generic action (shorthand) ────────────────────────────────────────────
+    '[ACTION]': ctx?.product_category
+      ? `applying ${ctx.product_category.toLowerCase()}`
+      : 'using the product',
+
+    // ── Date variants ─────────────────────────────────────────────────────────
+    '[BEFORE DATE]': `Before ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+    '[AFTER DATE]':  `After ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+
+    // ── Whiteboard template — new label/state variants ────────────────────────
+    '[AFTER LABEL like Radiant, lifted, visibly renewed eye contour]':
+      ctx?.after_state ?? '',
+    '[AFTER STATE like the same eye — brighter, lifted, with smoother under-eye area]':
+      ctx?.after_state ?? '',
+    '[BEFORE LABEL like Dark circles, fine lines, tired-looking eyes]':
+      ctx?.before_state ?? '',
+    '[BEFORE STATE like a simple eye outline with under-eye shadow and small radiating fine lines]':
+      ctx?.before_state ?? '',
+
+    // ── Audience shorthand ────────────────────────────────────────────────────
+    '[AUDIENCE]': ctx?.target_audience ?? '',
+
+    // ── Color palette direct slots ────────────────────────────────────────────
+    '[COLOR 1]': cp[0] ? `${cp[0].name} (${cp[0].hex})` : colorStr(primaryColor),
+    '[COLOR 2]': cp[1] ? `${cp[1].name} (${cp[1].hex})` : colorStr(accentColor),
+    '[COLOR 3]': cp[2] ? `${cp[2].name} (${cp[2].hex})` : colorStr(contrastColor),
+    '[DARK]':    colorStr(darkColor ?? primaryColor),
+
+    // ── Ingredient / product detail variants ──────────────────────────────────
+    '[DETAIL like chips spilling out]':
+      product.ingredients?.filter((i) => i.key).map((i) => i.name).join(', ') || heroIngr,
+    '[DETAILS like a few gummies/capsules spilling out at the base]':
+      product.ingredients?.filter((i) => i.key).map((i) => i.name).join(', ') || heroIngr,
+    '[DETAILS]':
+      ctx?.product_description ?? product.description ?? product.name,
+    '[DOSAGE]':
+      product.ingredients?.find((i) => i.key)?.name ?? 'as directed',
+    '[PRODUCT DETAILS like capsules scattered nearby]':
+      product.ingredients?.filter((i) => i.key).map((i) => i.name).slice(0, 2).join(' and ') || heroIngr,
+
+    // ── Emoji / market ────────────────────────────────────────────────────────
+    '[EMOJI]': ctx?.market_flag ?? '✨',
+
+    // ── Layout position ───────────────────────────────────────────────────────
+    '[LEFT / BOTTOM / RIGHT]': 'lower right',
+
+    // ── Number shorthand ──────────────────────────────────────────────────────
+    '[NUMBER]': ctx?.stats?.[0]?.value ?? 'five',
+
+    // ── Person description variants (all derive from target_audience) ─────────
+    '[PERSON DESCRIPTION like a man in his 30s, friendly smile, casual]':
+      ctx?.target_audience ?? 'person',
+    '[PERSON DESCRIPTION like a woman\'s hand with clean natural nails]':
+      ctx?.target_audience ?? 'person',
+    '[PERSON DESCRIPTION like smiling woman, mid-60s, silver wavy hair, wearing blue top]':
+      ctx?.target_audience ?? 'person',
+    '[PERSON DESCRIPTION like young man in dark textured sweater holding an electric guitar]':
+      ctx?.target_audience ?? 'person',
+    '[PERSON DETAIL like woman\'s hand]':
+      ctx?.target_audience ? `hand of a ${ctx.target_audience}` : 'hand',
+    '[PERSON like a blonde woman in her early 30s, wearing a casual zip-up sweater]':
+      ctx?.target_audience ?? 'person',
+    '[PERSON like a man in mid-20s, beanie, crewneck sweatshirt]':
+      ctx?.target_audience ?? 'person',
+    '[PERSON like a woman\'s hand with clean natural nails]':
+      ctx?.target_audience ? `hand of a ${ctx.target_audience}` : 'hand',
+
+    // ── Problem / before-state shorthand ──────────────────────────────────────
+    '[PROBLEM STATEMENT]':
+      ctx?.before_state ?? '',
+    '[PROBLEM VISUAL like the specific physical symptom or problem the product solves — shown on the subject, no product visible]':
+      ctx?.before_state ?? '',
+
+    // ── Product descriptor shorthand ──────────────────────────────────────────
+    '[PRODUCT DESCRIPTOR like Flavor Wrapped Popcorn Kernels]':
+      ctx?.product_category ?? product.name,
+
+    // ── Result / benefit shorthands ───────────────────────────────────────────
+    '[RESULT]':        benefit(ctx, 1),
+    '[SECOND RESULT]': benefit(ctx, 2),
+
+    // ── Setting / surface new variants ────────────────────────────────────────
+    '[SETTING like a bright modern bathroom or kitchen counter]':
+      ctx?.setting ?? 'bright bathroom with natural light',
+    '[SURFACE like a marble countertop or wooden shelf]':
+      ctx?.surface ?? 'marble countertop',
+
+    // ── Superlative claim shorthand ───────────────────────────────────────────
+    '[SUPERLATIVE CLAIM like THE WORLD\'S HEALTHIEST CHOCOLATE]':
+      ctx?.social_proof ?? topClaim,
   };
 
   let filled = template;
@@ -261,4 +549,98 @@ export function assemblePrompt(
   parts.push(`Output: ${aspectRatio} aspect ratio, high-resolution, photorealistic product advertising.`);
 
   return parts.filter(Boolean).join('\n\n');
+}
+
+// ─── aiEnrichPrompt ──────────────────────────────────────────────────────────
+
+const PLACEHOLDER_RE = /\[[A-Z][A-Za-z0-9 _/—–\-\+\.',:!?()&]+\]/g;
+
+const AI_ENRICH_MODEL =
+  process.env.ENRICH_MODEL ?? 'claude-haiku-4-5-20251001';
+
+/**
+ * Finds any [PLACEHOLDER] tokens that fillTemplate() left unresolved,
+ * skips the ones that require real campaign/competitor data (AI_SKIP_TOKENS),
+ * then asks Claude to generate creative, on-brand values for the rest.
+ *
+ * Returns the prompt with all AI-fillable tokens resolved.
+ * Tokens in AI_SKIP_TOKENS are left as-is for the user to fill manually.
+ *
+ * Server-side only — never call from client components.
+ */
+export async function aiEnrichPrompt(
+  prompt:  string,
+  product: Product,
+): Promise<string> {
+  const remaining = [...new Set(prompt.match(PLACEHOLDER_RE) ?? [])].filter(
+    (t) => !AI_SKIP_TOKENS.has(t),
+  );
+
+  if (remaining.length === 0) return prompt;
+
+  const ctx = product.context;
+
+  // Build a compact product brief for Claude
+  const productBrief = [
+    `Product: ${product.name} by ${product.sub_brand ?? product.brand}`,
+    ctx?.product_category && `Category: ${ctx.product_category}`,
+    ctx?.target_audience  && `Target audience: ${ctx.target_audience}`,
+    ctx?.mood             && `Visual mood: ${ctx.mood}`,
+    ctx?.setting          && `Scene setting: ${ctx.setting}`,
+    ctx?.surface          && `Surface: ${ctx.surface}`,
+    ctx?.tagline          && `Tagline: ${ctx.tagline}`,
+    ctx?.hero_headline    && `Hero headline: ${ctx.hero_headline}`,
+    ctx?.benefits?.length && `Benefits: ${ctx.benefits.slice(0, 3).join('; ')}`,
+    ctx?.social_proof     && `Social proof: ${ctx.social_proof}`,
+    product.ingredients?.filter((i) => i.key).length &&
+      `Key ingredients: ${product.ingredients.filter((i) => i.key).map((i) => i.name).join(', ')}`,
+    ctx?.primary_color    && `Primary color: ${ctx.primary_color.name} (${ctx.primary_color.hex})`,
+    ctx?.accent_color     && `Accent color: ${ctx.accent_color.name} (${ctx.accent_color.hex})`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const tokenList = remaining.map((t) => `- ${t}`).join('\n');
+
+  const systemPrompt = `You are a creative director for a premium Ayurvedic beauty and wellness brand.
+You fill image-generation prompt placeholders with specific, vivid, on-brand values.
+Rules:
+- Each value must be short (typically 3-12 words) and concrete — suitable for an image-generation model
+- Match the brand's mood and visual language described in the product brief
+- For person descriptions: match the target audience demographics
+- For lighting/texture/gradient: derive from the brand's color palette and mood
+- For action descriptions: match the product category and usage context
+- For headline/hook text: be emotionally resonant and benefit-led
+- Never mention competitors, clinical claims you cannot substantiate, or pricing
+- Return ONLY valid JSON — no markdown, no commentary`;
+
+  const userMsg = `Product brief:\n${productBrief}\n\nFill each placeholder below. Return a JSON object where each key is the exact placeholder string (including brackets) and the value is your fill:\n${tokenList}`;
+
+  try {
+    const client = new Anthropic();
+    const response = await client.messages.create({
+      model:      AI_ENRICH_MODEL,
+      max_tokens: 1024,
+      messages:   [{ role: 'user', content: userMsg }],
+      system:     systemPrompt,
+    });
+
+    const raw = response.content[0].type === 'text' ? response.content[0].text : '';
+
+    // Strip markdown fences if Claude wrapped the JSON
+    const jsonStr = raw.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
+    const fills   = JSON.parse(jsonStr) as Record<string, string>;
+
+    let enriched = prompt;
+    for (const [token, value] of Object.entries(fills)) {
+      if (typeof value === 'string') {
+        enriched = enriched.split(token).join(value);
+      }
+    }
+    return enriched;
+  } catch (err) {
+    // Non-fatal — if AI enrichment fails, return the partially-filled prompt
+    console.warn('[aiEnrichPrompt] skipped due to error:', (err as Error).message);
+    return prompt;
+  }
 }
