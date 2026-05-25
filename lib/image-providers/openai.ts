@@ -123,12 +123,16 @@ async function submitGenerations(
   size: string,
   params: GenerateParams,
 ): Promise<GenerateResult> {
+  // 'medium' quality is 3-5× faster than 'high' with comparable output for ad
+  // proofing purposes. Switch to 'high' only for final export if needed.
+  const quality = process.env.OPENAI_IMAGE_QUALITY ?? 'medium';
+
   const body: Record<string, unknown> = {
     model:           modelId,
     prompt:          params.prompt,
     n:               1,
     size,
-    quality:         'high',
+    quality,
     output_format:   'png',   // image encoding format; b64_json is the default response shape
   };
 
@@ -154,25 +158,36 @@ async function submitEdits(
 ): Promise<GenerateResult> {
   const refs = params.referenceImageUrls ?? [];
 
+  // 'medium' quality is 3-5× faster than 'high' with comparable output for ad
+  // proofing purposes. Override with OPENAI_IMAGE_QUALITY=high for final export.
+  const quality = process.env.OPENAI_IMAGE_QUALITY ?? 'medium';
+
   const formData = new FormData();
   formData.append('model',            modelId);
   formData.append('prompt',           params.prompt);
   formData.append('n',                '1');
   formData.append('size',             size);
-  formData.append('quality', 'high');
+  formData.append('quality',          quality);
   // Note: input_fidelity is NOT sent for gpt-image-2 — the model always
   // processes at high fidelity automatically and the param is disallowed.
 
-  // Fetch and attach reference image(s)
-  // gpt-image-1 edits accepts multiple images via `image[]`
-  for (const ref of refs.slice(0, 4)) {
-    try {
-      const { buffer, mimeType } = await fetchImageAsBuffer(ref);
-      const ext = mimeType.split('/')[1] || 'png';
-      formData.append('image[]', new Blob([buffer], { type: mimeType }), `ref.${ext}`);
-    } catch (err: any) {
-      console.warn(`[OpenAI] Skipping reference image (fetch failed): ${err.message}`);
-    }
+  // Fetch all reference images in parallel (was serial for-loop — now Promise.all)
+  const fetchedRefs = await Promise.all(
+    refs.slice(0, 4).map(async (ref) => {
+      try {
+        return await fetchImageAsBuffer(ref);
+      } catch (err: any) {
+        console.warn(`[OpenAI] Skipping reference image (fetch failed): ${err.message}`);
+        return null;
+      }
+    }),
+  );
+
+  for (const fetched of fetchedRefs) {
+    if (!fetched) continue;
+    const { buffer, mimeType } = fetched;
+    const ext = mimeType.split('/')[1] || 'png';
+    formData.append('image[]', new Blob([buffer], { type: mimeType }), `ref.${ext}`);
   }
 
   // Convert lasso mask → OpenAI inpainting mask (transparent = edit here)

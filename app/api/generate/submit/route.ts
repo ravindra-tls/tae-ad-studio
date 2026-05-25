@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   // 2. Parse request
-  const { sessionId, productId, prompt, aspectRatio, referenceImageUrls, maskDataUrl, skipAssembly } = await request.json();
+  const { sessionId, productId, prompt, aspectRatio, referenceImageUrls, maskDataUrl, skipAssembly, templateId } = await request.json();
 
   if (!sessionId) {
     return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 });
@@ -98,6 +98,7 @@ export async function POST(request: Request) {
       aspect_ratio: aspectRatio || '1:1',
       api_provider: activeProvider === 'vertex' ? 'vertex-ai' : activeProvider,
       model_id:     modelId,
+      template_id:  templateId || null,
       status:       'queued',
     })
     .select()

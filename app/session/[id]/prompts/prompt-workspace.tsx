@@ -282,6 +282,7 @@ export function PromptWorkspace({
             prompt:             jobs[0].prompt,
             aspectRatio:        jobs[0].aspectRatio,
             referenceImageUrls: jobs[0].refUrls,
+            templateId:         jobs[0].templateId,
           }),
         });
         const data = await res.json();
@@ -302,6 +303,7 @@ export function PromptWorkspace({
                 prompt:             job.prompt,
                 aspectRatio:        job.aspectRatio,
                 referenceImageUrls: job.refUrls,
+                templateId:         job.templateId,
               }),
             })
           )

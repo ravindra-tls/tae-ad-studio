@@ -278,6 +278,7 @@ export interface GeneratedImage {
   api_provider: string;
   model_id: string | null;
   request_id: string | null;
+  template_id: string | null;
   status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw';
   error_message: string | null;
   created_at: string;

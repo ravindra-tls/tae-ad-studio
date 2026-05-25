@@ -40,7 +40,10 @@ import {
   buildRefineVisualUserMessage,
 } from '../prompts/critique';
 
-const CRITIQUE_MODEL = 'claude-sonnet-4-20250514';
+// Critique + refine are judgment + rewrite tasks — Haiku is 3-4× faster and
+// cheaper than Sonnet here with no meaningful quality loss on structured tasks.
+// Override with CRITIQUE_MODEL env var if you need Sonnet for A/B testing.
+const CRITIQUE_MODEL = process.env.CRITIQUE_MODEL ?? 'claude-haiku-4-5-20251001';
 const CRITIQUE_MAX_TOKENS = 2048;
 const REFINE_MAX_TOKENS = 2048;
 
