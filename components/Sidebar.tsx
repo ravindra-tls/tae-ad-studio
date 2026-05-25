@@ -18,6 +18,7 @@ import {
   BarChart3,
   Palette,
   Flag,
+  LayoutTemplate,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +38,7 @@ const NAV = [
 const ADMIN_NAV = [
   { href: '/admin/products',       label: 'Products',       icon: Package },
   { href: '/admin/users',          label: 'Users',          icon: Users },
+  { href: '/admin/templates',      label: 'Templates',      icon: LayoutTemplate },
   { href: '/admin/brand',          label: 'Brand Config',   icon: Palette },
   { href: '/admin/feature-flags',  label: 'Feature Flags',  icon: Flag },
   { href: '/admin/feedback',       label: 'Feedback',       icon: MessageSquarePlus },
