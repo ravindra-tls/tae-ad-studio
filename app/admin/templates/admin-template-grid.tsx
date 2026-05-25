@@ -218,6 +218,9 @@ function EditModal({
   const [aspectRatio,  setAspectRatio]  = useState(template.default_aspect_ratio);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState<string | null>(null);
+  const [mounted,      setMounted]      = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -247,7 +250,9 @@ function EditModal({
     }
   };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ animation: 'overlayIn 0.2s ease forwards', backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
@@ -333,7 +338,8 @@ function EditModal({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
