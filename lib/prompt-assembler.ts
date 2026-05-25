@@ -462,22 +462,13 @@ export function fillTemplate(template: string, product: Product): string {
     // ── Number shorthand ──────────────────────────────────────────────────────
     '[NUMBER]': ctx?.stats?.[0]?.value ?? 'five',
 
-    // ── Person description variants (all derive from target_audience) ─────────
-    '[PERSON DESCRIPTION like a man in his 30s, friendly smile, casual]':
-      ctx?.target_audience ?? 'person',
-    '[PERSON DESCRIPTION like a woman\'s hand with clean natural nails]':
-      ctx?.target_audience ?? 'person',
-    '[PERSON DESCRIPTION like smiling woman, mid-60s, silver wavy hair, wearing blue top]':
-      ctx?.target_audience ?? 'person',
-    '[PERSON DESCRIPTION like young man in dark textured sweater holding an electric guitar]':
-      ctx?.target_audience ?? 'person',
+    // ── Person description — ONLY the generic shorthands are statically mapped.
+    // All specific [PERSON like clothing/styling description] variants are
+    // intentionally NOT in this map — they fall through to aiEnrichPrompt where
+    // Claude builds a proper visual description from target_audience + mood.
+    // Statically mapping them to bare target_audience strips all clothing/styling
+    // context that image models need.
     '[PERSON DETAIL like woman\'s hand]':
-      ctx?.target_audience ? `hand of a ${ctx.target_audience}` : 'hand',
-    '[PERSON like a blonde woman in her early 30s, wearing a casual zip-up sweater]':
-      ctx?.target_audience ?? 'person',
-    '[PERSON like a man in mid-20s, beanie, crewneck sweatshirt]':
-      ctx?.target_audience ?? 'person',
-    '[PERSON like a woman\'s hand with clean natural nails]':
       ctx?.target_audience ? `hand of a ${ctx.target_audience}` : 'hand',
 
     // ── Problem / before-state shorthand ──────────────────────────────────────
@@ -553,7 +544,8 @@ export function assemblePrompt(
 
 // ─── aiEnrichPrompt ──────────────────────────────────────────────────────────
 
-const PLACEHOLDER_RE = /\[[A-Z][A-Za-z0-9 _/—–\-\+\.',:!?()&]+\]/g;
+// À-ɏ covers Latin Extended A+B (accented chars like é, ü, ñ, etc.)
+const PLACEHOLDER_RE = /\[[A-Z][A-Za-z0-9À-ɏ _/—–\-\+\.',:!?()&]+\]/g;
 
 const AI_ENRICH_MODEL =
   process.env.ENRICH_MODEL ?? 'claude-haiku-4-5-20251001';
