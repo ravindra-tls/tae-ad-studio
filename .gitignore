@@ -15,6 +15,10 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# Screen recordings
+*.mp4
+*.mov
+
 # Scratch folders — not committed
 tmp/
 docs/
