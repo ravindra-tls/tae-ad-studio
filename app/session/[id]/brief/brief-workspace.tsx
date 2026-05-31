@@ -19,7 +19,6 @@
  */
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import type { Brief, Concept, Session, Product } from '@/types';
 import type { SamenessRound } from '@/lib/pipeline/stages/sameness';
@@ -190,14 +189,6 @@ export function BriefWorkspace({
           { label: productName, href: `/session/${session.id}/prompts` },
           { label: 'Brief-first' },
         ]}
-        actions={
-          <Link
-            href={`/session/${session.id}/prompts`}
-            className="text-xs text-brand-slate hover:text-brand-forest underline-offset-4 hover:underline"
-          >
-            Switch to templates &rarr;
-          </Link>
-        }
       />
 
       {phase === 'form' && (
