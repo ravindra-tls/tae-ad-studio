@@ -115,9 +115,17 @@ export async function POST(request: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[api/pipeline/brief] stage failed:', msg);
+    const friendlyError =
+      msg.includes('usage limits') || msg.includes('rate_limit') || msg.includes('429')
+        ? 'AI service usage limit reached. Please try again after your billing period resets.'
+        : msg.includes('401') || msg.includes('authentication')
+        ? 'AI service authentication error. Check the ANTHROPIC_API_KEY environment variable.'
+        : msg.includes('overloaded') || msg.includes('529')
+        ? 'AI service is temporarily overloaded. Please try again in a moment.'
+        : 'Brief generation failed. Please try again.';
     return NextResponse.json(
-      { error: `Brief stage failed: ${msg}`, trace },
-      { status: 502 }, // upstream (Claude) failed
+      { error: friendlyError, trace },
+      { status: 502 },
     );
   }
 
