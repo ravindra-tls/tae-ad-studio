@@ -1,17 +1,20 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { createPortal } from 'react-dom';
 import {
   Pencil, Trash2, X, ChevronLeft, ChevronRight,
   Check, Loader2, Images, AlertTriangle,
+  Sparkles, ImagePlus, FlaskConical, ExternalLink, Camera,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { LoadingAnimations } from '@/components/loading-animations';
+import { loadingMessages } from '@/lib/loading-messages';
 import type { PromptTemplate } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -201,6 +204,579 @@ function GalleryModal({
   );
 }
 
+// ─── Create Template Modal ────────────────────────────────────────────────────
+
+type CreateStep = 'input' | 'generating' | 'preview' | 'testing' | 'results';
+
+type TestResult =
+  | { imageId: string; imageUrl: string; productName: string; aspectRatio: string }
+  | { error: string; productName: string };
+
+function CreateTemplateModal({
+  onClose,
+  onCreated,
+  onViewInGallery,
+}: {
+  onClose:         () => void;
+  onCreated:       (template: PromptTemplate) => void;
+  onViewInGallery: (templateId: string) => void;
+}) {
+  const [step,         setStep]         = useState<CreateStep>('input');
+  const [description,  setDescription]  = useState('');
+  const [imageBase64,  setImageBase64]  = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [mimeType,     setMimeType]     = useState('image/jpeg');
+  const [error,        setError]        = useState<string | null>(null);
+  const [template,     setTemplate]     = useState<PromptTemplate | null>(null);
+  const [testResults,  setTestResults]  = useState<TestResult[]>([]);
+  const [mounted,      setMounted]      = useState(false);
+  const [isDragging,   setIsDragging]   = useState(false);
+
+  // ── Inline loading state (mirrors LoadingExperience internals) ──
+  const [loadingProgress,   setLoadingProgress]   = useState(0);
+  const [loadingElapsed,    setLoadingElapsed]     = useState(0);
+  const [loadingMsgIdx,     setLoadingMsgIdx]      = useState(0);
+  const [loadingAnimIdx,    setLoadingAnimIdx]     = useState(0);
+  const [loadingTextFading, setLoadingTextFading]  = useState(false);
+  const [loadingAnimFading, setLoadingAnimFading]  = useState(false);
+  const [loadingEstSecs,    setLoadingEstSecs]     = useState(15);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const isLoading = step === 'generating' || step === 'testing';
+
+  // Escape key — block during loading
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !isLoading) onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [isLoading, onClose]);
+
+  // Reset + seed loading state when a loading step begins
+  useEffect(() => {
+    if (!isLoading) return;
+    setLoadingProgress(0);
+    setLoadingElapsed(0);
+    setLoadingMsgIdx(Math.floor(Math.random() * loadingMessages.length));
+    setLoadingAnimIdx(Math.floor(Math.random() * LoadingAnimations.length));
+    setLoadingTextFading(false);
+    setLoadingAnimFading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Elapsed timer
+  useEffect(() => {
+    if (!isLoading) return;
+    const id = setInterval(() => setLoadingElapsed((e) => e + 1), 1000);
+    return () => clearInterval(id);
+  }, [isLoading]);
+
+  // Fake progress curve (matches LoadingExperience formula)
+  useEffect(() => {
+    if (!isLoading) return;
+    setLoadingProgress(Math.min(92, (1 - Math.exp(-loadingElapsed / (loadingEstSecs * 0.6))) * 100));
+  }, [loadingElapsed, loadingEstSecs, isLoading]);
+
+  // Rotate messages every 4.5s
+  useEffect(() => {
+    if (!isLoading) return;
+    const id = setInterval(() => {
+      setLoadingTextFading(true);
+      setTimeout(() => {
+        setLoadingMsgIdx((i) => (i + 1) % loadingMessages.length);
+        setLoadingTextFading(false);
+      }, 300);
+    }, 4500);
+    return () => clearInterval(id);
+  }, [isLoading]);
+
+  // Cycle SVG animations every 10s
+  useEffect(() => {
+    if (!isLoading) return;
+    const id = setInterval(() => {
+      setLoadingAnimFading(true);
+      setTimeout(() => {
+        setLoadingAnimIdx((i) => (i + 1) % LoadingAnimations.length);
+        setLoadingAnimFading(false);
+      }, 500);
+    }, 10000);
+    return () => clearInterval(id);
+  }, [isLoading]);
+
+  const loadFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    setMimeType(file.type);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      setImageBase64(result);
+      setImagePreview(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) loadFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  };
+
+  const handleGenerate = async () => {
+    if (!imageBase64 && !description.trim()) {
+      setError('Upload an image or describe the ad layout you want.');
+      return;
+    }
+    setError(null);
+    setLoadingEstSecs(15);
+    setStep('generating');
+
+    try {
+      const res = await fetch('/api/admin/templates/generate', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          description: description.trim() || undefined,
+          imageBase64:  imageBase64        || undefined,
+          mimeType,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Generation failed');
+      setTemplate(data as PromptTemplate);
+      onCreated(data as PromptTemplate);
+      // Fill bar to 100%, then transition
+      setLoadingProgress(100);
+      setTimeout(() => setStep('preview'), 700);
+    } catch (err: any) {
+      setError(err.message);
+      setStep('input');
+    }
+  };
+
+  const handleTest = async () => {
+    if (!template) return;
+    setLoadingEstSecs(60);
+    setStep('testing');
+    try {
+      const res = await fetch('/api/admin/templates/test', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ templateId: template.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Test failed');
+      setTestResults(data.results ?? []);
+      setLoadingProgress(100);
+      setTimeout(() => setStep('results'), 700);
+    } catch (err: any) {
+      setError(err.message);
+      setStep('preview');
+    }
+  };
+
+  if (!mounted) return null;
+
+  const LoadingAnimComponent = LoadingAnimations[loadingAnimIdx];
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        backdropFilter:  'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        animation: 'overlayIn 0.2s ease forwards',
+      }}
+      onClick={() => { if (!isLoading) onClose(); }}
+    >
+      <div
+        className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col"
+        style={{
+          maxHeight: '90vh',
+          animation: 'modalIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+
+        {/* ── STEP: input ── */}
+        {step === 'input' && (
+          <>
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-brand-sage/20 px-6 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-brand-lime" />
+                  <h2 className="text-base font-semibold text-brand-black">Create Template with AI</h2>
+                </div>
+                <p className="text-xs text-brand-slate mt-0.5">
+                  Upload a reference ad and Claude will reverse-engineer it into a reusable prompt template
+                </p>
+              </div>
+              <button
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-brand-slate hover:bg-brand-cream hover:text-brand-forest"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              {/* Drop zone */}
+              <div
+                className={cn(
+                  'relative rounded-xl border-2 border-dashed transition-colors cursor-pointer',
+                  isDragging
+                    ? 'border-brand-forest bg-brand-forest/5'
+                    : 'border-brand-sage/40 hover:border-brand-forest/50 hover:bg-brand-cream/30',
+                )}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleFileChange}
+                />
+
+                {imagePreview ? (
+                  <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imagePreview}
+                      alt="Reference ad"
+                      className="w-full max-h-72 object-contain rounded-xl"
+                    />
+                    <button
+                      className="absolute top-2 right-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setImageBase64(null);
+                        setImagePreview(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    <p className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-[10px] text-white/80">
+                      Click or drop to replace
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 py-10">
+                    <div className="rounded-xl bg-brand-cream p-3">
+                      <ImagePlus className="h-7 w-7 text-brand-slate" />
+                    </div>
+                    <p className="text-sm font-medium text-brand-slate">
+                      Drop an ad image here
+                    </p>
+                    <p className="text-xs text-brand-slate/60">or click to browse · JPG, PNG, WEBP</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Optional description */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-brand-slate">
+                  Additional context <span className="text-brand-slate/50">(optional)</span>
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the ad format, target audience, or layout notes…"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-brand-sage/30 bg-brand-cream/30 px-3 py-2.5 text-sm leading-relaxed text-brand-navy placeholder:text-brand-slate/40 focus:border-brand-forest focus:outline-none focus:ring-2 focus:ring-brand-forest/20"
+                />
+              </div>
+
+              {error && (
+                <p className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {error}
+                </p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2 border-t border-brand-sage/20 px-6 py-4">
+              <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+              <Button
+                size="sm"
+                onClick={handleGenerate}
+                disabled={!imageBase64 && !description.trim()}
+                className="bg-brand-forest hover:bg-brand-forest/90"
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                Generate Template
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* ── STEP: generating / testing — inline loading ── */}
+        {isLoading && (
+          <>
+            <div className="flex items-center justify-between border-b border-brand-sage/20 px-6 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-brand-lime animate-pulse" />
+                  <h2 className="text-base font-semibold text-brand-black">
+                    {step === 'generating' ? 'Building your template…' : 'Testing with 3 products…'}
+                  </h2>
+                </div>
+                <p className="text-xs text-brand-slate mt-0.5">This usually takes 15–30 seconds</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center justify-center gap-4 px-6 py-8">
+              {/* Animated SVG — same as LoadingExperience */}
+              <div
+                style={{
+                  width: 180, height: 180,
+                  animation: 'floatBob 4s ease-in-out infinite',
+                  opacity:   loadingAnimFading ? 0 : 1,
+                  transform: loadingAnimFading ? 'scale(0.9) translateY(10px)' : 'scale(1) translateY(0)',
+                  transition: 'opacity 500ms ease, transform 500ms ease',
+                }}
+              >
+                <LoadingAnimComponent key={loadingAnimIdx} />
+              </div>
+
+              {/* Rotating message */}
+              <p
+                className="text-center text-sm font-medium text-brand-forest/80 max-w-xs"
+                style={{
+                  opacity:   loadingTextFading ? 0 : 1,
+                  transform: loadingTextFading ? 'translateY(6px)' : 'translateY(0)',
+                  transition: 'opacity 300ms ease, transform 300ms ease',
+                }}
+              >
+                {loadingMessages[loadingMsgIdx]}
+              </p>
+
+              {/* Progress bar */}
+              <div className="w-full max-w-xs">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-brand-sage/15">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${loadingProgress}%`,
+                      background: 'linear-gradient(90deg, #2D644E, #4A9E7A, #D4A853)',
+                      boxShadow:  '0 0 10px rgba(45,100,78,0.25)',
+                      transition: loadingProgress === 100
+                        ? 'width 700ms cubic-bezier(0.4,0,0.2,1)'
+                        : 'width 1000ms ease-out',
+                    }}
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-brand-slate/50">
+                  <span>{step === 'generating' ? 'Crafting your template…' : 'Generating 3 ad images…'}</span>
+                  <span>{Math.round(loadingProgress)}%</span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-brand-slate/35 text-center">
+                {step === 'generating'
+                  ? 'Claude is analysing layout, tokens, and composition'
+                  : 'Good things take time — about 15–30s per image'}
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ── STEP: preview ── */}
+        {step === 'preview' && template && (
+          <>
+            <div className="flex items-start justify-between border-b border-brand-sage/20 px-6 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-green-500" />
+                  <h2 className="text-base font-semibold text-brand-black">Template Created</h2>
+                </div>
+                <p className="text-xs text-brand-slate mt-0.5">
+                  Saved to library · Test it against 3 random products
+                </p>
+              </div>
+              <button
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-brand-slate hover:bg-brand-cream hover:text-brand-forest"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              {/* Meta row */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  {template.category}
+                </Badge>
+                <span className="text-[10px] font-medium text-brand-slate bg-brand-cream px-1.5 py-0.5 rounded">
+                  {template.default_aspect_ratio}
+                </span>
+                <span className="text-[11px] font-semibold text-brand-black ml-1">
+                  {template.name}
+                </span>
+              </div>
+
+              {/* Prompt preview */}
+              <div className="rounded-lg bg-brand-cream/40 border border-brand-sage/20 p-3">
+                <p className="font-mono text-[11px] leading-relaxed text-brand-navy whitespace-pre-wrap">
+                  {template.template}
+                </p>
+              </div>
+
+              {error && (
+                <p className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-brand-sage/20 px-6 py-4">
+              <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+              <Button
+                size="sm"
+                onClick={handleTest}
+                className="bg-brand-forest hover:bg-brand-forest/90"
+              >
+                <FlaskConical className="mr-1.5 h-3.5 w-3.5" />
+                Test Template
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* ── STEP: results ── */}
+        {step === 'results' && template && (
+          <>
+            <div className="flex items-start justify-between border-b border-brand-sage/20 px-6 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Images className="h-4 w-4 text-brand-lime" />
+                  <h2 className="text-base font-semibold text-brand-black">Test Results</h2>
+                </div>
+                <p className="text-xs text-brand-slate mt-0.5">
+                  {testResults.filter((r) => !('error' in r)).length} of {testResults.length} images generated
+                </p>
+              </div>
+              <button
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-brand-slate hover:bg-brand-cream hover:text-brand-forest"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <div className="grid grid-cols-3 gap-3">
+                {testResults.map((result, idx) => {
+                  if ('error' in result) {
+                    return (
+                      <div
+                        key={idx}
+                        className="flex flex-col items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4"
+                        style={{ aspectRatio: aspectToCSS(template.default_aspect_ratio) }}
+                      >
+                        <AlertTriangle className="h-5 w-5 text-red-400" />
+                        <p className="text-[10px] text-red-500 text-center">{result.error}</p>
+                        <p className="text-[10px] text-brand-slate/60 text-center">{result.productName}</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={result.imageId} className="flex flex-col gap-1.5">
+                      <div
+                        className="relative overflow-hidden rounded-xl ring-1 ring-brand-sage/30"
+                        style={{ aspectRatio: aspectToCSS(result.aspectRatio) }}
+                      >
+                        <Image
+                          src={result.imageUrl}
+                          alt={result.productName}
+                          fill
+                          className="object-cover"
+                          sizes="200px"
+                        />
+                      </div>
+                      <p className="text-[10px] text-brand-slate text-center leading-tight line-clamp-2">
+                        {result.productName}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-brand-sage/20 px-6 py-4">
+              <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+              {template && (
+                <Button
+                  size="sm"
+                  onClick={() => onViewInGallery(template.id)}
+                  className="bg-brand-forest hover:bg-brand-forest/90"
+                >
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                  View in Gallery
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ─── Create Template Card ─────────────────────────────────────────────────────
+
+function CreateTemplateCard({ onClick }: { onClick: () => void }) {
+  return (
+    <div
+      className={cn(
+        'group relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed',
+        'border-brand-sage/40 bg-white p-8 text-center transition-shadow',
+        'hover:shadow-md',
+      )}
+      style={{ minHeight: 180 }}
+    >
+      <div className={cn(
+        'flex h-11 w-11 items-center justify-center rounded-xl bg-brand-cream transition-colors',
+        'group-hover:bg-brand-forest/10',
+      )}>
+        <Sparkles className="h-5 w-5 text-brand-slate group-hover:text-brand-forest transition-colors" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-brand-black">
+          Copy Competitor's Top Ad
+        </p>
+        <p className="mt-0.5 text-[11px] text-brand-slate/60 leading-snug">
+          Upload any ad and Claude reverse-engineers it into a reusable template
+        </p>
+      </div>
+      <button
+        onClick={onClick}
+        className="mt-1 rounded-lg bg-brand-forest px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-brand-forest/90 transition-colors"
+      >
+        Create Template
+      </button>
+    </div>
+  );
+}
+
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 
 function EditModal({
@@ -352,17 +928,57 @@ export function AdminTemplateGrid({
 }: AdminTemplateGridProps) {
   const router = useRouter();
 
-  const [templates,        setTemplates]        = useState(initialTemplates);
-  const [imagesByTemplate, setImagesByTemplate] = useState(initialImagesByTemplate);
-  const [categoryFilter,   setCategoryFilter]   = useState('All');
-  const [editingId,        setEditingId]        = useState<string | null>(null);
-  const [confirmDeleteId,  setConfirmDeleteId]  = useState<string | null>(null);
-  const [deleting,         setDeleting]         = useState(false);
-  const [galleryId,        setGalleryId]        = useState<string | null>(null);
+  const [templates,           setTemplates]           = useState(initialTemplates);
+  const [imagesByTemplate,    setImagesByTemplate]    = useState(initialImagesByTemplate);
+  const [categoryFilter,      setCategoryFilter]      = useState('All');
+  const [editingId,           setEditingId]           = useState<string | null>(null);
+  const [confirmDeleteId,     setConfirmDeleteId]     = useState<string | null>(null);
+  const [deleting,            setDeleting]            = useState(false);
+  const [galleryId,           setGalleryId]           = useState<string | null>(null);
+  const [showCreate,          setShowCreate]          = useState(false);
+  const [generatingPreviewId, setGeneratingPreviewId] = useState<string | null>(null);
+
+  const handleGeneratePreview = async (templateId: string, force = false) => {
+    setGeneratingPreviewId(templateId);
+    try {
+      const res = await fetch(`/api/admin/templates/${templateId}/preview`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ force }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Preview generation failed');
+      setTemplates((prev) =>
+        prev.map((t) => t.id === templateId ? { ...t, preview_image_url: data.preview_image_url } : t)
+      );
+    } catch (err: any) {
+      alert(`Preview failed: ${err.message}`);
+    } finally {
+      setGeneratingPreviewId(null);
+    }
+  };
+
+  // Generate previews for all templates that don't have one yet
+  const [generatingAllPreviews, setGeneratingAllPreviews] = useState(false);
+  const handleGenerateAllPreviews = async () => {
+    const missing = templates.filter((t) => !t.preview_image_url);
+    if (missing.length === 0) return;
+    setGeneratingAllPreviews(true);
+    for (const t of missing) {
+      await handleGeneratePreview(t.id, false);
+    }
+    setGeneratingAllPreviews(false);
+  };
+  const missingPreviewCount = templates.filter((t) => !t.preview_image_url).length;
 
   const filtered = categoryFilter === 'All'
     ? templates
     : templates.filter((t) => t.category === categoryFilter);
+
+  const handleCreated = (newTemplate: PromptTemplate) => {
+    // Optimistically prepend — page refresh will reorder by number
+    setTemplates((prev) => [newTemplate, ...prev]);
+  };
 
   const handleSave = (updated: PromptTemplate) => {
     setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
@@ -400,13 +1016,34 @@ export function AdminTemplateGrid({
             {cat}
           </button>
         ))}
-        <span className="ml-auto text-xs text-brand-slate">
-          {filtered.length} template{filtered.length !== 1 ? 's' : ''}
-        </span>
+        <div className="ml-auto flex items-center gap-3">
+          {missingPreviewCount > 0 && (
+            <button
+              onClick={handleGenerateAllPreviews}
+              disabled={generatingAllPreviews || !!generatingPreviewId}
+              className="flex items-center gap-1.5 rounded-lg border border-brand-sage/40 bg-white px-3 py-1.5 text-xs font-medium text-brand-slate hover:border-brand-forest/50 hover:text-brand-forest hover:bg-brand-cream transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generatingAllPreviews ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Camera className="h-3 w-3" />
+              )}
+              {generatingAllPreviews
+                ? 'Generating previews…'
+                : `Generate ${missingPreviewCount} missing preview${missingPreviewCount !== 1 ? 's' : ''}`}
+            </button>
+          )}
+          <span className="text-xs text-brand-slate">
+            {filtered.length} template{filtered.length !== 1 ? 's' : ''}
+          </span>
+        </div>
       </div>
 
       {/* Template grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Create card — always first */}
+        <CreateTemplateCard onClick={() => setShowCreate(true)} />
+
         {filtered.map((template) => {
           const previewImages   = (imagesByTemplate[template.id] || []).slice(0, 2);
           const imageCount      = countByTemplate[template.id] ?? 0;
@@ -459,7 +1096,7 @@ export function AdminTemplateGrid({
               </div>
 
               {/* Number + Name */}
-              <div className="pr-16 mb-2">
+              <div className={cn('mb-2', isConfirmDelete ? 'pr-36' : 'pr-16')}>
                 <span className="text-[11px] font-bold text-brand-lime mr-1">#{template.number}</span>
                 <h3 className="inline text-sm font-semibold text-brand-black leading-snug">
                   {template.name}
@@ -489,36 +1126,71 @@ export function AdminTemplateGrid({
                 {template.template}
               </p>
 
-              {/* Generated images strip */}
-              <div className="border-t border-brand-sage/20 pt-3">
-                {imageCount === 0 ? (
+              {/* Preview image (demo product Sulwhasoo) */}
+              {template.preview_image_url && (
+                <div className="mb-3 overflow-hidden rounded-lg border border-brand-sage/20 bg-brand-cream/30">
+                  <Image
+                    src={template.preview_image_url}
+                    alt={`${template.name} preview`}
+                    width={480}
+                    height={0}
+                    style={{ width: '100%', height: 'auto' }}
+                    className="object-cover"
+                    sizes="(max-width: 640px) 100vw, 360px"
+                  />
+                  <p className="px-2 py-1 text-[9px] text-brand-slate/40 text-right">
+                    Demo: Sulwhasoo Ginseng Cream
+                  </p>
+                </div>
+              )}
+
+              {/* Generated images strip + preview button */}
+              <div className="border-t border-brand-sage/20 pt-3 flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  {imageCount === 0 ? (
+                    <button
+                      onClick={() => setGalleryId(template.id)}
+                      className="flex items-center gap-1.5 text-[10px] text-brand-slate/50 hover:text-brand-slate transition-colors"
+                    >
+                      <Images className="h-3 w-3" />
+                      No images generated yet
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setGalleryId(template.id)}
+                      className="group/strip flex items-center gap-2 hover:opacity-80 transition-opacity"
+                    >
+                      <div className="flex -space-x-1.5">
+                        {previewImages.map((img) => (
+                          <div key={img.id} className="relative h-7 w-7 overflow-hidden rounded-md ring-2 ring-white shrink-0">
+                            <Image src={img.image_url} alt="" fill className="object-cover" sizes="28px" />
+                          </div>
+                        ))}
+                      </div>
+                      <span className="text-[10px] font-medium text-brand-slate group-hover/strip:text-brand-forest transition-colors">
+                        {overflow > 0
+                          ? `+${overflow} more · ${imageCount} total`
+                          : `${imageCount} image${imageCount !== 1 ? 's' : ''} generated`}
+                      </span>
+                      <ChevronRight className="h-3 w-3 text-brand-slate/40 group-hover/strip:text-brand-forest/60 ml-auto transition-colors" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Generate preview — only shown when no preview exists yet */}
+                {!template.preview_image_url && (
                   <button
-                    onClick={() => setGalleryId(template.id)}
-                    className="flex items-center gap-1.5 text-[10px] text-brand-slate/50 hover:text-brand-slate transition-colors"
+                    onClick={() => handleGeneratePreview(template.id, false)}
+                    disabled={generatingPreviewId === template.id}
+                    title="Generate preview image using Sulwhasoo demo product"
+                    className="shrink-0 flex items-center gap-1 rounded-md border border-brand-sage/30 px-2 py-1 text-[10px] font-medium text-brand-slate hover:border-brand-forest/50 hover:text-brand-forest hover:bg-brand-cream transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Images className="h-3 w-3" />
-                    No images generated yet
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setGalleryId(template.id)}
-                    className="group/strip flex items-center gap-2 hover:opacity-80 transition-opacity"
-                  >
-                    {/* Thumbnails */}
-                    <div className="flex -space-x-1.5">
-                      {previewImages.map((img) => (
-                        <div key={img.id} className="relative h-7 w-7 overflow-hidden rounded-md ring-2 ring-white shrink-0">
-                          <Image src={img.image_url} alt="" fill className="object-cover" sizes="28px" />
-                        </div>
-                      ))}
-                    </div>
-                    {/* Count label */}
-                    <span className="text-[10px] font-medium text-brand-slate group-hover/strip:text-brand-forest transition-colors">
-                      {overflow > 0
-                        ? `+${overflow} more · ${imageCount} total`
-                        : `${imageCount} image${imageCount !== 1 ? 's' : ''} generated`}
-                    </span>
-                    <ChevronRight className="h-3 w-3 text-brand-slate/40 group-hover/strip:text-brand-forest/60 ml-auto transition-colors" />
+                    {generatingPreviewId === template.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Camera className="h-3 w-3" />
+                    )}
+                    {generatingPreviewId === template.id ? 'Generating…' : 'Preview'}
                   </button>
                 )}
               </div>
@@ -544,6 +1216,22 @@ export function AdminTemplateGrid({
           initialImages={imagesByTemplate[galleryTemplate.id] || []}
           initialCount={countByTemplate[galleryTemplate.id] ?? 0}
           onClose={() => setGalleryId(null)}
+        />
+      )}
+
+      {/* Create template modal */}
+      {showCreate && (
+        <CreateTemplateModal
+          onClose={() => {
+            setShowCreate(false);
+            router.refresh(); // sync DB order after creation
+          }}
+          onCreated={handleCreated}
+          onViewInGallery={(templateId) => {
+            setShowCreate(false);
+            setGalleryId(templateId);
+            router.refresh();
+          }}
         />
       )}
     </>

@@ -12,9 +12,10 @@ import type { Product } from '@/types';
 
 interface ProductSelectorProps {
   products: Product[];
+  flow?: 'brief' | 'templates';
 }
 
-export function ProductSelector({ products }: ProductSelectorProps) {
+export function ProductSelector({ products, flow = 'templates' }: ProductSelectorProps) {
   const [search, setSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState<string | null>(null);
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
@@ -170,7 +171,10 @@ export function ProductSelector({ products }: ProductSelectorProps) {
         );
       }
     }
-    router.push(`/session/${createdSessionId}/prompts`);
+    const dest = flow === 'brief'
+      ? `/session/${createdSessionId}/brief`
+      : `/session/${createdSessionId}/prompts`;
+    router.push(dest);
   };
 
   return (

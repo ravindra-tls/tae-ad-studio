@@ -1,16 +1,13 @@
 /**
  * POST /api/generate/submit
  *
- * V1 note (2026-04-18): this route hardcodes api_provider='xai' and
- * model_id=XAI_MODEL_ID because xAI is the TEMPORARY image-gen bridge. The
- * target is Vertex AI (Gemini 3 Pro Image) — switching means (a) flipping
- * IMAGE_PROVIDER=vertex in env (handled by lib/image-providers/index.ts) and
- * (b) sourcing api_provider + model_id from the provider object instead of
- * hardcoding. Keeping it hardcoded for now to avoid silently migrating the
- * historical generated_images rows that reference 'xai' as their provider.
+ * Active provider: openai / gpt-image-2 for all generation modes.
+ * Provider + model are derived from IMAGE_PROVIDER env var (default: openai),
+ * so switching is a single env-var flip — no code changes needed.
  */
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getGeneratedFileExtension, imageProvider } from '@/lib/image-providers';
+import { compositeMaskedEdit } from '@/lib/image-providers/composite';
 import { assemblePrompt, aiEnrichPrompt } from '@/lib/prompt-assembler';
 import { NextResponse } from 'next/server';
 
@@ -85,13 +82,16 @@ export async function POST(request: Request) {
   }
 
   // 5. Create generated_image record
-  // (step numbering preserved for readability)
   // Derive provider + model from env so the DB row reflects reality.
+  // Provider + model derived from env — mirrors lib/image-providers/index.ts.
+  // All generation modes (text-only, lasso, reference edit) use the same provider.
+  const hasMask = !!maskDataUrl;
+  const hasRefs = (referenceImageUrls?.length ?? 0) > 0;
   const activeProvider = (process.env.IMAGE_PROVIDER || 'openai').toLowerCase();
   const modelId =
-    activeProvider === 'xai'    ? (process.env.XAI_MODEL_ID    || 'grok-imagine-image') :
+    activeProvider === 'xai'    ? (process.env.XAI_MODEL_ID       || 'grok-imagine-image') :
     activeProvider === 'vertex' ? (process.env.VERTEX_AI_MODEL_ID || 'gemini-3-pro-image-preview') :
-    (process.env.OPENAI_MODEL_ID || 'gpt-image-2');
+                                  (process.env.OPENAI_MODEL_ID    || 'gpt-image-2');
 
   const { data: genImage, error: insertError } = await serviceClient
     .from('generated_images')
@@ -109,9 +109,9 @@ export async function POST(request: Request) {
 
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
-  // 6. Call Vertex AI
+  // 6. Generate image
   // imageUrl is hoisted so we can return it directly in the response —
-  // the client receives it immediately and never needs to poll for edits.
+  // the client receives it immediately and never needs to poll.
   let completedImageUrl: string | undefined;
 
   try {
@@ -124,6 +124,21 @@ export async function POST(request: Request) {
     });
 
     if (result.status === 'completed' && result.image) {
+      // If a lasso mask was used, composite selected pixels from the generated
+      // output back over the original so only the lasso area changes.
+      if (maskDataUrl && referenceImageUrls?.[0]) {
+        try {
+          result.image.data = await compositeMaskedEdit(
+            referenceImageUrls[0],
+            result.image.data,
+            maskDataUrl,
+          );
+          console.log('[submit] Lasso composite applied');
+        } catch (err: any) {
+          console.warn('[submit] Composite failed, using raw generated image:', err.message);
+        }
+      }
+
       const imageBytes = Buffer.from(result.image.data, 'base64');
       const fileExt = getGeneratedFileExtension(result.image.mimeType);
       const filePath = `${user.id}/${genImage.id}.${fileExt}`;

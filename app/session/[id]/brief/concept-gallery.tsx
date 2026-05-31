@@ -12,12 +12,10 @@
  * drop one of the sameness methods.
  */
 
-import { useState } from 'react';
-import { Card } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronRight, Check, ArrowRight } from 'lucide-react';
-import { LoadingExperience } from '@/components/LoadingExperience';
+import { ChevronDown, ChevronRight, Check, ArrowRight, Loader2 } from 'lucide-react';
 import type { Concept } from '@/types';
 import type {
   SamenessRound,
@@ -53,6 +51,50 @@ interface ConceptGalleryProps {
   onContinue?: (selectedIds: string[]) => void;
 }
 
+// ─── Loading screen — matches quiz DraftingScreen style ───────────────────────
+
+const CONCEPT_MESSAGES = [
+  'Drafting concept directions…',
+  'Checking for redundancy…',
+  'Sharpening each hook…',
+  'Finalising the lineup…',
+  'Almost there…',
+];
+
+function ConceptLoadingScreen() {
+  const [msgIdx, setMsgIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setMsgIdx((i) => (i + 1) % CONCEPT_MESSAGES.length), 2500);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="max-w-2xl mx-auto mt-6">
+      <div className="flex flex-col items-center justify-center py-20 gap-6 text-center rounded-3xl border border-brand-forest/10 bg-white shadow-sm">
+        <div
+          className="relative h-24 w-24 rounded-full flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #3A5340, #C4963F)' }}
+        >
+          <div
+            className="absolute inset-0 rounded-full animate-ping opacity-20"
+            style={{ background: 'linear-gradient(135deg, #3A5340, #D0DD61)' }}
+          />
+          <Loader2 className="h-10 w-10 text-white animate-spin" />
+        </div>
+        <div>
+          <p className="text-lg font-bold text-brand-forest">Generating concepts…</p>
+          <p className="text-sm text-brand-slate mt-1">{CONCEPT_MESSAGES[msgIdx]}</p>
+        </div>
+        <p className="text-xs text-brand-slate/60 max-w-xs">
+          Claude drafts 4 distinct directions, then checks for redundancy and
+          regenerates any that are too similar. Usually 15–30s.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Gallery ──────────────────────────────────────────────────────────────────
+
 export function ConceptGallery({
   concepts,
   samenessRounds,
@@ -82,46 +124,38 @@ export function ConceptGallery({
   }
 
   if (loading && concepts.length === 0) {
-    return (
-      <Card className="mt-5 p-10 flex flex-col items-center justify-center text-center">
-        <LoadingExperience />
-        <h3 className="mt-4 text-base font-semibold text-brand-forest">
-          Generating concepts…
-        </h3>
-        <p className="mt-1 text-sm text-brand-slate max-w-md">
-          Claude is drafting 4 candidate directions. Redundant ones get
-          regenerated in place — this can take ~15-30s.
-        </p>
-      </Card>
-    );
+    return <ConceptLoadingScreen />;
   }
 
   return (
-    <div className="mt-5 space-y-4">
+    <div className="max-w-2xl mx-auto mt-6 space-y-4">
+      {/* Section header — same quiz step style */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-brand-forest">
-            Concepts <span className="text-brand-slate font-normal">({concepts.length})</span>
+          <div className="h-6 w-6 rounded-full bg-brand-forest flex items-center justify-center text-[11px] font-bold text-white shrink-0">
+            ✓
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold text-brand-forest">
+            Pick your concepts
           </h2>
-          {selectionEnabled && (
+          {selectionEnabled && selectedCount > 0 && (
             <Badge
               variant="outline"
-              className={
-                selectedCount > 0
-                  ? 'border-brand-teal/40 text-brand-teal'
-                  : 'border-brand-slate/30 text-brand-slate'
-              }
+              className="border-brand-teal/40 text-brand-teal"
             >
               {selectedCount} selected
             </Badge>
           )}
         </div>
         {samenessRetries > 0 && (
-          <Badge variant="outline" className="border-brand-gold text-brand-gold">
-            {samenessRetries} sameness retr{samenessRetries === 1 ? 'y' : 'ies'}
+          <Badge variant="outline" className="border-brand-gold text-brand-gold text-[10px]">
+            {samenessRetries} retr{samenessRetries === 1 ? 'y' : 'ies'}
           </Badge>
         )}
       </div>
+      <p className="text-sm text-brand-slate -mt-2">
+        Select one or more directions to advance to copy + visuals.
+      </p>
 
       {selectError && (
         <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -149,26 +183,25 @@ export function ConceptGallery({
       </div>
 
       {selectionEnabled && onContinue && (
-        <div className="flex items-center justify-between gap-3 mt-4 rounded-md border border-brand-cream bg-brand-cream/40 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 pt-5 border-t border-brand-forest/8">
           <p className="text-xs text-brand-slate">
             {selectedCount === 0
-              ? `Pick one or more concepts to advance to copy + visuals.`
+              ? 'Select at least one concept to continue.'
               : selectedCount === 1
-                ? `1 concept selected — ready to continue (or pick more).`
-                : `${selectedCount} concepts selected — ready to continue.`}
+                ? '1 concept selected — ready to generate.'
+                : `${selectedCount} concepts selected — ready to generate.`}
           </p>
           <Button
-            size="sm"
             disabled={selectedCount === 0}
             onClick={() =>
               onContinue(
                 concepts.filter((c) => c.selected_at !== null).map((c) => c.id),
               )
             }
+            className="gap-2"
           >
-            Continue with {selectedCount} concept
-            {selectedCount === 1 ? '' : 's'}
-            <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+            Generate visuals
+            <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       )}

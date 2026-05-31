@@ -167,6 +167,8 @@ export interface PromptTemplate {
   default_aspect_ratio: string;
   version: number;
   created_at: string;
+  /** AI-generated preview image using demo product (Sulwhasoo). Null until admin generates it. */
+  preview_image_url: string | null;
 }
 
 export interface Session {

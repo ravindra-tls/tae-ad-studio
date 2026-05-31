@@ -41,3 +41,7 @@ export function daysUntilReset(cycleReset: string) {
   const diff = Math.ceil((reset.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   return Math.max(0, diff);
 }
+
+// Sentinel value stored in DB for "no cap" — keep in sync with admin user-actions.
+export const UNLIMITED_CAP = 999999;
+export const isUnlimitedCap = (cap: number) => cap >= UNLIMITED_CAP;

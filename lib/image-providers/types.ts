@@ -5,11 +5,9 @@ export interface GenerateParams {
    * Lasso selection mask exported from the browser canvas as a PNG data URI.
    * The selected area is filled red (rgba ~239,68,68); the rest is transparent.
    *
-   * Providers handle this differently:
-   *  - OpenAI gpt-image-1: converted to a transparent-alpha inpainting mask
-   *    (transparent = edit here) and sent as the `mask` multipart field.
-   *  - xAI /edits: inserted as IMAGE_1 in the reference array; prompt uses
-   *    <IMAGE_0>/<IMAGE_1> addressing to scope the change spatially.
+   * Providers may support this differently. The current app flow strips this
+   * from provider calls and lets the submit route composite the selected area
+   * from the generated image back onto the original.
    */
   maskDataUrl?: string;
   aspectRatio: '1:1' | '4:5' | '9:16' | '16:9' | '3:4';

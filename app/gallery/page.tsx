@@ -4,6 +4,19 @@ import { AppLayout } from '@/components/AppLayout';
 import { Gallery } from '@/components/Gallery';
 import type { GalleryImage } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 48;
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export default async function GalleryPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -25,7 +38,16 @@ export default async function GalleryPage() {
 
   const ratedImageIds = new Set((ratedRows ?? []).map((r: any) => r.image_id as string));
 
-  // Fetch all completed images with joined session → product + profile data
+  // Real total count (head-only, no data transfer)
+  const { count } = await serviceClient
+    .from('generated_images')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'completed')
+    .not('image_url', 'is', null);
+
+  const totalCount = count ?? 0;
+
+  // First page — SSR initial data for instant first paint
   const { data: rawImages } = await serviceClient
     .from('generated_images')
     .select(`
@@ -39,23 +61,21 @@ export default async function GalleryPage() {
     .eq('status', 'completed')
     .not('image_url', 'is', null)
     .order('created_at', { ascending: false })
-    .limit(200);
+    .range(0, PAGE_SIZE - 1);
 
-  // Flatten joined data into GalleryImage shape
-  const images: GalleryImage[] = (rawImages || []).map((img: any) => ({
-    id:            img.id,
-    session_id:    img.session_id,
-    prompt_used:   img.prompt_used,
-    aspect_ratio:  img.aspect_ratio,
-    image_url:     img.image_url,
-    api_provider:  img.api_provider,
-    model_id:      img.model_id,
-    request_id:    img.request_id,
-    status:        img.status,
-    error_message: img.error_message,
-    created_at:    img.created_at,
-    template_id:   img.template_id ?? null,
-    // Joined
+  const initialImages: GalleryImage[] = (rawImages || []).map((img: any) => ({
+    id:                img.id,
+    session_id:        img.session_id,
+    prompt_used:       img.prompt_used,
+    aspect_ratio:      img.aspect_ratio,
+    image_url:         img.image_url,
+    api_provider:      img.api_provider,
+    model_id:          img.model_id,
+    request_id:        img.request_id,
+    status:            img.status,
+    error_message:     img.error_message,
+    created_at:        img.created_at,
+    template_id:       img.template_id ?? null,
     creator_user_id:   img.session?.user_id ?? null,
     creator_name:      img.session?.profile?.full_name ?? img.session?.profile?.email ?? 'Unknown',
     creator_initials:  getInitials(img.session?.profile?.full_name ?? img.session?.profile?.email ?? '?'),
@@ -70,16 +90,12 @@ export default async function GalleryPage() {
       email={profile?.email ?? user.email ?? null}
       isAdmin={profile?.role === 'admin'}
     >
-      <Gallery images={images} currentUserId={user.id} ratedImageIds={ratedImageIds} />
+      <Gallery
+        initialImages={initialImages}
+        totalCount={totalCount}
+        currentUserId={user.id}
+        ratedImageIds={ratedImageIds}
+      />
     </AppLayout>
   );
-}
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
 }

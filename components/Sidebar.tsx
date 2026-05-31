@@ -29,10 +29,9 @@ interface SidebarProps {
 }
 
 const NAV = [
-  { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
-  { href: '/session/new',  label: 'New Session',  icon: Folders },
-  { href: '/gallery',      label: 'Gallery',      icon: GalleryHorizontalEnd },
-  { href: '/feedback',     label: 'Feedback',     icon: MessageSquarePlus },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/gallery',   label: 'Gallery',   icon: GalleryHorizontalEnd },
+  { href: '/feedback',  label: 'Feedback',  icon: MessageSquarePlus },
 ];
 
 const ADMIN_NAV = [

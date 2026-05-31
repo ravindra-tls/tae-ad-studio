@@ -1,19 +1,17 @@
 'use client';
 
 /**
- * Step 2 of the brief-first shell. Renders the structured brief that Claude
- * produced in stage 1, with an Approve button that triggers concept
- * generation.
+ * Step 2 of the brief-first shell — brief review in the same quiz visual
+ * language. Renders the structured brief Claude produced, with an Approve
+ * button that triggers concept generation.
  *
- * Shell-scope: display only (no inline editing). If Ravindra wants to tweak
- * the hypothesis, he clicks "Start over" and re-drafts with a better
- * objective. Full inline editing is Phase 2 polish.
+ * Shell-scope: display-only (no inline editing). If the marketer wants to
+ * tweak the hypothesis, they click "Start over" and re-run the quiz.
+ * Full inline editing is Phase 2 polish.
  */
 
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Check, RefreshCcw, Lightbulb } from 'lucide-react';
+import { RefreshCcw, Sparkles, Lightbulb, Users, Gift, Mic } from 'lucide-react';
 import type { Brief } from '@/types';
 
 interface BriefStructured {
@@ -44,16 +42,34 @@ interface BriefCardProps {
   alreadyGenerated?: boolean;
 }
 
-function List({ items }: { items?: string[] }) {
-  if (!items || items.length === 0) {
-    return <span className="text-xs italic text-brand-slate">(none)</span>;
-  }
+function Pill({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
   return (
-    <ul className="list-disc pl-5 space-y-1 text-sm text-brand-navy">
-      {items.map((s, i) => (
-        <li key={i}>{s}</li>
-      ))}
-    </ul>
+    <div className="rounded-xl bg-brand-cream/60 px-4 py-3">
+      <dt className="text-[10px] font-semibold uppercase tracking-widest text-brand-slate/60 mb-0.5">
+        {label}
+      </dt>
+      <dd className="text-sm text-brand-navy leading-snug">{value}</dd>
+    </div>
+  );
+}
+
+function BulletList({ label, items }: { label: string; items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <div className="rounded-xl bg-brand-cream/60 px-4 py-3">
+      <dt className="text-[10px] font-semibold uppercase tracking-widest text-brand-slate/60 mb-1.5">
+        {label}
+      </dt>
+      <ul className="space-y-1">
+        {items.map((s, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm text-brand-navy">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-forest/50" />
+            {s}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -67,122 +83,124 @@ export function BriefCard({
   const s = (brief.structured as BriefStructured | null) ?? {};
 
   return (
-    <Card className="mt-5 p-6">
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-brand-slate">
-            <Badge variant="secondary">Stage 1 — Brief</Badge>
-            <Badge variant="outline" className="border-brand-teal/30">
-              Strictness: {brief.strictness}
-            </Badge>
-            {brief.wild_card && (
-              <Badge variant="outline" className="border-brand-gold text-brand-gold">
-                Wild card
-              </Badge>
-            )}
+    <div className="max-w-2xl mx-auto mt-6">
+      {/* Step header — matches quiz step numbering style */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="h-6 w-6 rounded-full bg-brand-forest flex items-center justify-center text-[11px] font-bold text-white">
+            ✓
           </div>
-          <h2 className="text-lg font-semibold text-brand-forest mt-1">
-            Structured brief
-          </h2>
+          <span className="text-xs font-medium text-brand-slate">Brief ready — review before generating</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onStartOver} disabled={approving}>
-            <RefreshCcw className="h-3.5 w-3.5 mr-1.5" /> Start over
-          </Button>
-          {!alreadyGenerated && (
-            <Button size="sm" onClick={onApprove} disabled={approving}>
-              <Check className="h-3.5 w-3.5 mr-1.5" />
-              {approving ? 'Generating concepts…' : 'Approve & get concepts'}
-            </Button>
+        <h2 className="text-xl sm:text-2xl font-bold text-brand-forest">
+          Here's what Claude built
+        </h2>
+        <p className="text-sm text-brand-slate mt-1">
+          Review the structured brief. If it looks right, approve it — Claude will generate concept directions next.
+        </p>
+      </div>
+
+      {/* Objective echo */}
+      <div className="rounded-2xl border border-brand-forest/10 bg-white px-5 py-4 mb-4">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-brand-slate/60 mb-1">
+          Your objective
+        </p>
+        <p className="text-sm text-brand-navy leading-relaxed">{brief.objective ?? '—'}</p>
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-[11px] bg-brand-cream px-2.5 py-1 rounded-full text-brand-slate font-medium">
+            Strictness: <span className="text-brand-forest">{brief.strictness}</span>
+          </span>
+          {brief.wild_card && (
+            <span className="inline-flex items-center gap-1 text-[11px] bg-amber-50 px-2.5 py-1 rounded-full text-amber-700 font-medium border border-amber-200/60">
+              🎲 Wild card on
+            </span>
           )}
         </div>
       </div>
 
-      <div className="mb-4 rounded-md bg-brand-cream/50 px-3 py-2 text-xs text-brand-slate">
-        <span className="font-semibold text-brand-forest">Your objective:</span>{' '}
-        {brief.objective ?? '(none)'}
-      </div>
+      {/* Brief sections */}
+      <div className="rounded-3xl border border-brand-forest/10 bg-white shadow-sm p-6 sm:p-8 space-y-6">
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Audience */}
         <section>
-          <h3 className="text-sm font-semibold text-brand-forest mb-2">Audience</h3>
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-brand-slate">Primary</dt>
-              <dd className="text-brand-navy">{s.audience?.primary ?? '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-brand-slate">Pains</dt>
-              <dd>
-                <List items={s.audience?.pains} />
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-brand-slate">
-                Jobs to be done
-              </dt>
-              <dd>
-                <List items={s.audience?.jobs_to_be_done} />
-              </dd>
-            </div>
-            {s.audience?.context && (
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-brand-slate">Context</dt>
-                <dd className="text-sm text-brand-navy">{s.audience.context}</dd>
-              </div>
-            )}
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="h-4 w-4 text-brand-forest/60" />
+            <h3 className="text-sm font-bold text-brand-forest uppercase tracking-wide">Audience</h3>
+          </div>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Pill label="Primary" value={s.audience?.primary} />
+            <Pill label="Context" value={s.audience?.context} />
+            <BulletList label="Pains" items={s.audience?.pains} />
+            <BulletList label="Jobs to be done" items={s.audience?.jobs_to_be_done} />
           </dl>
         </section>
+
+        <div className="h-px bg-brand-forest/8" />
 
         {/* Offer */}
         <section>
-          <h3 className="text-sm font-semibold text-brand-forest mb-2">Offer</h3>
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-brand-slate">Core promise</dt>
-              <dd className="text-brand-navy">{s.offer?.core_promise ?? '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-brand-slate">Mechanism</dt>
-              <dd className="text-brand-navy">{s.offer?.mechanism ?? '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-brand-slate">Proof points</dt>
-              <dd>
-                <List items={s.offer?.proof_points} />
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-brand-slate">CTA</dt>
-              <dd className="text-brand-navy">{s.offer?.cta ?? '—'}</dd>
-            </div>
+          <div className="flex items-center gap-2 mb-3">
+            <Gift className="h-4 w-4 text-brand-forest/60" />
+            <h3 className="text-sm font-bold text-brand-forest uppercase tracking-wide">Offer</h3>
+          </div>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Pill label="Core promise" value={s.offer?.core_promise} />
+            <Pill label="Mechanism" value={s.offer?.mechanism} />
+            <BulletList label="Proof points" items={s.offer?.proof_points} />
+            <Pill label="CTA" value={s.offer?.cta} />
           </dl>
         </section>
-      </div>
 
-      <div className="mt-5 border-t border-brand-cream pt-4 grid grid-cols-1 md:grid-cols-2 gap-5">
-        <section>
-          <h3 className="text-sm font-semibold text-brand-forest flex items-center gap-1.5">
-            <Lightbulb className="h-3.5 w-3.5 text-brand-gold" />
-            Hypothesis
-          </h3>
-          <p className="mt-1 text-sm text-brand-navy">{s.hypothesis ?? '—'}</p>
-        </section>
-        <section>
-          <h3 className="text-sm font-semibold text-brand-forest">Tone direction</h3>
-          <p className="mt-1 text-sm text-brand-navy">{s.tone_direction ?? '—'}</p>
-        </section>
-      </div>
+        <div className="h-px bg-brand-forest/8" />
 
-      {s.wild_card_interpretation && (
-        <div className="mt-5 rounded-md border border-brand-gold/30 bg-brand-gold/5 px-4 py-3">
-          <div className="text-xs font-semibold text-brand-gold uppercase tracking-wide">
-            Wild-card interpretation
+        {/* Hypothesis + Tone */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Lightbulb className="h-4 w-4 text-brand-gold" />
+            <h3 className="text-sm font-bold text-brand-forest uppercase tracking-wide">Strategy</h3>
           </div>
-          <p className="mt-1 text-sm text-brand-navy">{s.wild_card_interpretation}</p>
-        </div>
-      )}
-    </Card>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Pill label="Hypothesis" value={s.hypothesis} />
+            <Pill label="Tone direction" value={s.tone_direction} />
+          </dl>
+        </section>
+
+        {s.wild_card_interpretation && (
+          <>
+            <div className="h-px bg-brand-forest/8" />
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <Mic className="h-4 w-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-amber-600 uppercase tracking-wide">Wild-card interpretation</h3>
+              </div>
+              <div className="rounded-xl border border-amber-200/60 bg-amber-50/60 px-4 py-3">
+                <p className="text-sm text-brand-navy">{s.wild_card_interpretation}</p>
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Navigation — matches quiz step nav */}
+        {!alreadyGenerated && (
+          <div className="flex items-center justify-between pt-5 border-t border-brand-forest/8">
+            <button
+              onClick={onStartOver}
+              disabled={approving}
+              className="flex items-center gap-1.5 text-sm font-medium rounded-lg px-3 py-2 transition-colors text-brand-slate hover:text-brand-forest hover:bg-brand-cream disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <RefreshCcw className="h-4 w-4" /> Start over
+            </button>
+            <Button
+              onClick={onApprove}
+              disabled={approving}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              {approving ? 'Generating concepts…' : 'Looks good — generate concepts'}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

@@ -404,6 +404,13 @@ export function fillTemplate(template: string, product: Product): string {
     '[HIGHLIGHTED PHRASE 2 like This is the best product I have found.]':
       t1?.pull_quote ? `"${t1.pull_quote}"` : (t0?.pull_quote ? `"${t0.pull_quote}"` : ''),
 
+    // ── Product topic (UGC Story bubble 1) ───────────────────────────────────
+    // Old template had [TOPIC + EMOJI like gut health 🌱] — emoji in brackets
+    // broke the regex so it was never replaced. Clean token maps to category.
+    '[PRODUCT TOPIC]': ctx?.product_category
+      ? ctx.product_category.split(' ').slice(0, 3).join(' ')
+      : product.name.split(' ').slice(0, 2).join(' '),
+
     // ── Product visual variants ───────────────────────────────────────────
     '[YOUR PRODUCT like branded shaker cup]':          ctx?.product_description ?? product.name,
     '[YOUR PRODUCT like the signature bright yellow popper bowl overflowing with fluffy popcorn]':

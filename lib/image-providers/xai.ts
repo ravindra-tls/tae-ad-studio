@@ -180,15 +180,10 @@ export const xai: ImageProvider = {
     const apiKey  = getApiKey();
     const modelId = getModelId(params.modelId);
 
-    // xAI has no native inpainting mask support. When the caller provides a
-    // lasso mask (red-fill PNG data URI), we insert it as the second reference
-    // image and rely on <IMAGE_0>/<IMAGE_1> addressing in the prompt to scope
-    // the edit spatially. The prompt is pre-built by buildEditPrompt() in
-    // EditPromptModal when maskDataUrl is present, so we just inject the ref.
+    // xAI handles reference edits when IMAGE_PROVIDER=xai. Masked edits are
+    // routed before they reach this provider.
     const baseRefs = params.referenceImageUrls ?? [];
-    const allRefs  = params.maskDataUrl
-      ? [baseRefs[0], params.maskDataUrl, ...baseRefs.slice(1)].filter(Boolean) as string[]
-      : baseRefs;
+    const allRefs  = baseRefs;
 
     const refs = allRefs.slice(0, MAX_REFERENCE_IMAGES);
     if (allRefs.length > MAX_REFERENCE_IMAGES) {

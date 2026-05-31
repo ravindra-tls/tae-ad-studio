@@ -24,7 +24,7 @@ import { Breadcrumb } from '@/components/Breadcrumb';
 import type { Brief, Concept, Session, Product } from '@/types';
 import type { SamenessRound } from '@/lib/pipeline/stages/sameness';
 import type { AspectRatio } from '@/lib/hooks/use-generation-stream';
-import { BriefForm } from './brief-form';
+import { BriefQuiz } from './brief-quiz';
 import { BriefCard } from './brief-card';
 import { ConceptGallery } from './concept-gallery';
 import { GenerationDrawer } from './generation-drawer';
@@ -200,23 +200,24 @@ export function BriefWorkspace({
         }
       />
 
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-brand-forest">Brief-first session</h1>
-        <p className="text-sm text-brand-slate mt-1">
-          Start from an objective. Claude drafts a structured brief, then proposes
-          diverse concept directions. No rendering in this shell &mdash; that&apos;s Phase 2.
-        </p>
-      </div>
+      {phase === 'form' && (
+        <div className="mb-8 text-center">
+          <h1 className="text-2xl font-bold text-brand-forest">Let's build your brief</h1>
+          <p className="text-sm text-brand-slate mt-1.5">
+            A few quick questions — Claude does the rest.
+          </p>
+        </div>
+      )}
 
       {error && (
-        <div className="mb-5 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="max-w-2xl mx-auto mb-5 rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
           <strong className="font-semibold">Something went wrong:</strong> {error}
         </div>
       )}
 
-      {/* Step 1: Brief form (always visible until a brief is drafted). */}
+      {/* Step 1: Brief quiz (gamified multi-step questionnaire). */}
       {phase === 'form' && (
-        <BriefForm
+        <BriefQuiz
           productName={productName}
           onSubmit={handleDraftBrief}
           loading={briefLoading}
@@ -235,9 +236,9 @@ export function BriefWorkspace({
           />
         )}
 
-      {/* Aspect ratio + reference toggle — governs what size & inputs go to xAI. */}
+      {/* Aspect ratio + reference toggle — constrained to quiz width */}
       {phase === 'concepts_ready' && concepts.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-stretch gap-2">
+        <div className="max-w-2xl mx-auto mb-0 mt-4 flex flex-wrap items-stretch gap-2">
           <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
           <ReferenceToggle value={useReferences} onChange={setUseReferences} />
         </div>

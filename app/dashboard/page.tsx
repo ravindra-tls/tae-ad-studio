@@ -2,9 +2,9 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Clock, ArrowRight } from 'lucide-react';
+import { Clock, ArrowRight } from 'lucide-react';
 import { UsageMeter } from '@/components/UsageMeter';
-import { Button } from '@/components/ui/button';
+import { WorkflowCards } from '@/components/WorkflowCards';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { daysUntilReset, formatDate } from '@/lib/utils';
@@ -21,11 +21,10 @@ export default async function DashboardPage({
   const serviceClient = await createServiceClient();
   const showAll = searchParams?.showAll === '1';
 
-  const { data: profile } = await serviceClient
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
+  const [{ data: profile }, { data: products }] = await Promise.all([
+    serviceClient.from('profiles').select('*').eq('id', user.id).single(),
+    serviceClient.from('products').select('id, name, brand, sub_brand, thumbnail_url').order('brand'),
+  ]);
 
   // ── Prune empty sessions before loading the list ──────────────
   const { data: allSessions } = await serviceClient
@@ -76,21 +75,18 @@ export default async function DashboardPage({
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-brand-forest">
-            Welcome back, {profile?.full_name?.split(' ')[0] || 'there'}
-          </h1>
-          <p className="text-sm text-brand-slate mt-1">Create stunning ad images powered by AI</p>
-        </div>
-        <Link href="/session/new">
-          <Button size="lg">
-            <Plus className="mr-2 h-4 w-4" /> New Session
-          </Button>
-        </Link>
+      {/* ── Welcome header (no New Session button) ── */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-brand-forest">
+          Welcome back, {profile?.full_name?.split(' ')[0] || 'there'}
+        </h1>
+        <p className="text-sm text-brand-slate mt-1">What would you like to create today?</p>
       </div>
 
-      {/* Usage + Stats */}
+      {/* ── Workflow cards — front and centre ── */}
+      <WorkflowCards products={products || []} />
+
+      {/* ── Usage + Stats ── */}
       <div className="grid gap-4 sm:grid-cols-3 mb-8">
         <div className="sm:col-span-2 stagger-item" style={{ animationDelay: '60ms' }}>
           <UsageMeter
@@ -107,7 +103,7 @@ export default async function DashboardPage({
         </Card>
       </div>
 
-      {/* Recent Sessions */}
+      {/* ── Recent Sessions ── */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">
@@ -130,10 +126,7 @@ export default async function DashboardPage({
         <CardContent>
           {!sessions?.length ? (
             <div className="py-8 text-center">
-              <p className="text-brand-slate mb-4">No sessions yet. Start your first one!</p>
-              <Link href="/session/new">
-                <Button><Plus className="mr-2 h-4 w-4" /> Start Session</Button>
-              </Link>
+              <p className="text-brand-slate mb-4">No sessions yet. Choose a workflow above to get started!</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -150,7 +143,7 @@ export default async function DashboardPage({
                         src={session.product.thumbnail_url}
                         alt={session.product?.name || ''}
                         fill
-                        className="object-contain p-0.5"
+                        className="object-cover"
                       />
                     </div>
                   ) : (
@@ -160,7 +153,14 @@ export default async function DashboardPage({
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-brand-teal truncate">{session.name}</p>
-                    <p className="text-xs text-gray-400 truncate">{session.product?.name} — {session.product?.sub_brand || session.product?.brand}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {session.product?.name} — {session.product?.sub_brand || session.product?.brand}
+                      {session.source === 'copy_ad' && (
+                        <span className="ml-1.5 text-[10px] font-medium text-brand-forest/60 bg-brand-forest/8 px-1.5 py-0.5 rounded">
+                          copy-ad
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="text-[10px]">

@@ -11,13 +11,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Profile } from '@/types';
+import { UNLIMITED_CAP } from '@/lib/utils';
 
 interface UserActionsProps {
   user: Profile;
 }
 
-// Sentinel value stored in DB for "no cap"
-export const UNLIMITED_CAP = 999999;
+// Re-export so existing importers (admin/page.tsx) keep working.
+export { UNLIMITED_CAP };
 
 const CAP_OPTIONS = [
   { value: 30,            label: '30 / wk' },

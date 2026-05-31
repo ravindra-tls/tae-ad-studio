@@ -346,8 +346,7 @@ export function PromptWorkspace({
       setIsSubmitting(false);
       setGenerateComplete(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplates, session.id, product, referenceImages, router, isSubmitting]);
+  }, [selectedTemplates, session.id, product, referenceImages, templateImages, sessionRefImages, editedPrompts, editedRatios, router, isSubmitting]);
 
   /* ── render ── */
   return (
@@ -501,15 +500,145 @@ export function PromptWorkspace({
         </div>
       </div>
 
-      {/* Template grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Template grid — 2 cols max so two-column cards have room */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {filtered.map((template) => {
           const isSelected      = selectedIds.has(template.id);
           const isEdited        = !!editedPrompts[template.id];
           const preview         = getPrompt(template);
           const hasPlaceholders = findPlaceholders(preview).length > 0;
+          const hasPreview      = !!template.preview_image_url;
 
-          return (
+          // ── Shared checkbox ──────────────────────────────────────────────────
+          const checkbox = (
+            <div
+              className={cn(
+                'checkbox-box h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0',
+                isSelected
+                  ? 'bg-brand-forest border-brand-forest shadow-[0_2px_8px_rgba(26,81,41,0.35)]'
+                  : 'border-brand-sage/60 bg-white'
+              )}
+            >
+              {isSelected && (
+                <svg viewBox="0 0 10 8" className="h-2.5 w-2.5" fill="none" overflow="visible">
+                  <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.8"
+                    strokeLinecap="round" strokeLinejoin="round" className="animate-checkmark" />
+                </svg>
+              )}
+            </div>
+          );
+
+          // ── Shared badges row ────────────────────────────────────────────────
+          const badges = (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                {template.category}
+              </Badge>
+              <span className="text-[10px] font-medium text-brand-slate bg-brand-cream px-1.5 py-0.5 rounded">
+                {getRatio(template)}
+              </span>
+              {hasPlaceholders && (
+                <span
+                  className="animate-badge-pop text-[10px] font-medium text-brand-forest/70 bg-brand-lime/20 border border-brand-lime/40 px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                  title="Some tokens in this template will be filled by Claude using product context"
+                >
+                  <Sparkles className="h-2.5 w-2.5" /> AI fills
+                </span>
+              )}
+              {isEdited && (
+                <span className="animate-badge-pop text-[10px] font-medium text-brand-green bg-brand-lime/20 px-1.5 py-0.5 rounded">
+                  edited
+                </span>
+              )}
+            </div>
+          );
+
+          // ── Shared hover row (thumbnails + edit) ─────────────────────────────
+          const imgs    = getEffectiveImages(template.id);
+          const hoverRow = (
+            <div
+              className="flex items-center gap-1.5 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-[opacity,transform] duration-[350ms]"
+              style={{ transitionTimingFunction: 'var(--spring-soft, cubic-bezier(0.34, 1.56, 0.64, 1))' }}
+            >
+              {imgs.length > 0 ? (
+                <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
+                  {imgs.slice(0, 3).map((img) => (
+                    <img key={img.id} src={img.dataUrl} alt={img.name} title={img.name}
+                      className="h-6 w-6 rounded border border-brand-sage/30 object-cover shrink-0" />
+                  ))}
+                  {imgs.length > 3 && (
+                    <span className="text-[9px] font-medium text-brand-slate bg-brand-cream rounded px-1">
+                      +{imgs.length - 3}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1" />
+              )}
+              <button
+                onClick={(e) => openEdit(e, template)}
+                title="Edit prompt"
+                className={cn(
+                  'edit-btn shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium border bg-white',
+                  isEdited
+                    ? 'border-brand-green/50 text-brand-green bg-brand-lime/10'
+                    : 'border-brand-sage/30 text-brand-slate hover:border-brand-forest/50 hover:text-brand-forest hover:bg-brand-cream'
+                )}
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </button>
+            </div>
+          );
+
+          return hasPreview ? (
+            // ── TWO-COLUMN LAYOUT when preview image exists ──────────────────
+            <div
+              key={template.id}
+              onClick={() => toggleSelect(template.id)}
+              className={cn(
+                'template-card group flex overflow-hidden cursor-pointer rounded-xl border bg-white select-none',
+                isSelected
+                  ? 'border-brand-forest shadow-[0_0_0_3px_rgba(26,81,41,0.15),0_4px_16px_rgba(26,81,41,0.12)]'
+                  : 'border-brand-sage/30 hover:border-brand-forest/40 hover:shadow-md'
+              )}
+            >
+              {/* Left — preview image */}
+              <div className="w-40 shrink-0 overflow-hidden bg-brand-cream/40">
+                <img
+                  src={template.preview_image_url!}
+                  alt={`${template.name} preview`}
+                  draggable={false}
+                  className="h-full w-full object-cover"
+                  style={{ minHeight: 180 }}
+                />
+              </div>
+
+              {/* Right — text content */}
+              <div className="flex flex-col flex-1 min-w-0 p-4 gap-2">
+                {/* Top row: number + name + checkbox */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-bold text-brand-lime mr-1">#{template.number}</span>
+                    <h3 className="inline text-sm font-semibold text-brand-black leading-snug">
+                      {template.name}
+                    </h3>
+                  </div>
+                  {checkbox}
+                </div>
+
+                {badges}
+
+                {/* Prompt text — clipped */}
+                <p className="text-[11px] text-brand-slate font-mono leading-relaxed line-clamp-3 flex-1">
+                  {preview}
+                </p>
+
+                {hoverRow}
+              </div>
+            </div>
+          ) : (
+            // ── SINGLE-COLUMN LAYOUT fallback when no preview yet ─────────────
             <div
               key={template.id}
               onClick={() => toggleSelect(template.id)}
@@ -521,112 +650,23 @@ export function PromptWorkspace({
               )}
             >
               {/* Checkbox */}
-              <div
-                className={cn(
-                  'checkbox-box absolute right-3 top-3 h-5 w-5 rounded border-2',
-                  'flex items-center justify-center flex-shrink-0',
-                  isSelected
-                    ? 'bg-brand-forest border-brand-forest shadow-[0_2px_8px_rgba(26,81,41,0.35)]'
-                    : 'border-brand-sage/60 bg-white'
-                )}
-              >
-                {isSelected && (
-                  <svg viewBox="0 0 10 8" className="h-2.5 w-2.5" fill="none" overflow="visible">
-                    <path
-                      d="M1 4l3 3 5-6"
-                      stroke="white"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="animate-checkmark"
-                    />
-                  </svg>
-                )}
-              </div>
+              <div className="absolute right-3 top-3">{checkbox}</div>
 
               {/* Number + name */}
               <div className="pr-8 mb-2">
                 <span className="text-[11px] font-bold text-brand-lime mr-1">#{template.number}</span>
-                <h3 className="text-sm font-semibold text-brand-black leading-snug">
+                <h3 className="inline text-sm font-semibold text-brand-black leading-snug">
                   {template.name}
                 </h3>
               </div>
 
-              {/* Category + ratio + edited badge */}
-              <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                  {template.category}
-                </Badge>
-                <span className="text-[10px] font-medium text-brand-slate bg-brand-cream px-1.5 py-0.5 rounded">
-                  {getRatio(template)}
-                </span>
-                {hasPlaceholders && (
-                  <span
-                    className="animate-badge-pop text-[10px] font-medium text-brand-forest/70 bg-brand-lime/20 border border-brand-lime/40 px-1.5 py-0.5 rounded flex items-center gap-0.5"
-                    title="Some tokens in this template will be filled by Claude using product context"
-                  >
-                    <Sparkles className="h-2.5 w-2.5" /> AI fills
-                  </span>
-                )}
-                {isEdited && (
-                  <span className="animate-badge-pop text-[10px] font-medium text-brand-green bg-brand-lime/20 px-1.5 py-0.5 rounded">
-                    edited
-                  </span>
-                )}
-              </div>
+              <div className="mb-3">{badges}</div>
 
-              {/* Prompt preview */}
               <p className="text-[11px] text-brand-slate font-mono leading-relaxed line-clamp-4 mb-8">
                 {preview}
               </p>
 
-              {/* Bottom row — image thumbnails + edit button, shown on hover */}
-              {(() => {
-                const imgs = getEffectiveImages(template.id);
-                const hasImgs = imgs.length > 0;
-                return (
-                  <div
-                    className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 opacity-0 translate-y-3 group-hover:opacity-100 group-hover:translate-y-0 transition-[opacity,transform] duration-[350ms]"
-                    style={{ transitionTimingFunction: 'var(--spring-soft, cubic-bezier(0.34, 1.56, 0.64, 1))' }}
-                  >
-                    {/* Image thumbnails */}
-                    {hasImgs && (
-                      <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
-                        {imgs.slice(0, 3).map((img) => (
-                          <img
-                            key={img.id}
-                            src={img.dataUrl}
-                            alt={img.name}
-                            title={img.name}
-                            className="h-6 w-6 rounded border border-brand-sage/30 object-cover shrink-0"
-                          />
-                        ))}
-                        {imgs.length > 3 && (
-                          <span className="text-[9px] font-medium text-brand-slate bg-brand-cream rounded px-1">
-                            +{imgs.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {/* Spacer if no images */}
-                    {!hasImgs && <div className="flex-1" />}
-                    {/* Edit button */}
-                    <button
-                      onClick={(e) => openEdit(e, template)}
-                      title="Edit prompt"
-                      className={cn(
-                        'edit-btn shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium border bg-white',
-                        isEdited
-                          ? 'border-brand-green/50 text-brand-green bg-brand-lime/10'
-                          : 'border-brand-sage/30 text-brand-slate hover:border-brand-forest/50 hover:text-brand-forest hover:bg-brand-cream'
-                      )}
-                    >
-                      <Pencil className="h-3 w-3" />
-                      Edit
-                    </button>
-                  </div>
-                );
-              })()}
+              <div className="absolute bottom-3 left-3 right-3">{hoverRow}</div>
             </div>
           );
         })}
