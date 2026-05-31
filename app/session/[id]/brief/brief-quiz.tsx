@@ -650,42 +650,58 @@ export function BriefQuiz({ productName, onSubmit, loading }: BriefQuizProps) {
   const answeredCount = STEPS.filter(
     (s, i) => i < stepIdx && s.questionNum !== undefined,
   ).length;
-  const progressPct = Math.round((answeredCount / TOTAL_QUESTIONS) * 100);
+
+  // Dynamic motivating label — changes as the user progresses
+  const progressLabel =
+    step.type === 'transition'
+      ? '✨ Nice one!'
+      : answeredCount === 0
+      ? 'Let\'s get started'
+      : answeredCount === 1
+      ? 'Good start!'
+      : answeredCount === 2
+      ? 'Building momentum…'
+      : answeredCount === 3
+      ? 'You\'re halfway there!'
+      : answeredCount === 4
+      ? 'Looking good 👀'
+      : answeredCount === 5
+      ? 'Almost done!'
+      : 'Last one — make it count';
 
   // Show loading screen while API is running
   if (loading) return <DraftingScreen />;
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* ── Progress bar ── */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-brand-slate">
-            {step.questionNum
-              ? `Question ${step.questionNum} of ${TOTAL_QUESTIONS}`
-              : 'Just a moment…'}
-          </span>
-          <span className="text-xs text-brand-slate/60">{progressPct}% complete</span>
-        </div>
-        <div className="h-1.5 rounded-full bg-brand-forest/10 overflow-hidden">
-          <div
-            className="h-full rounded-full bg-brand-forest transition-all duration-500"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
-        {/* Step dots */}
-        <div className="flex gap-1.5 mt-2 justify-center">
-          {STEPS.filter((s) => s.questionNum !== undefined).map((s) => (
-            <div
-              key={s.questionNum}
-              className={cn(
-                'h-1.5 rounded-full transition-all duration-300',
-                (s.questionNum ?? 0) <= answeredCount
-                  ? 'bg-brand-forest w-4'
-                  : 'bg-brand-forest/15 w-1.5',
-              )}
-            />
-          ))}
+      {/* ── Step tracker — numbered dots only, no redundant bar ── */}
+      <div className="mb-8 flex flex-col items-center gap-3">
+        {/* Motivating label */}
+        <p className="text-sm font-medium text-brand-slate transition-all duration-300">
+          {progressLabel}
+        </p>
+        {/* Numbered step dots */}
+        <div className="flex items-center gap-2">
+          {STEPS.filter((s) => s.questionNum !== undefined).map((s) => {
+            const num = s.questionNum ?? 0;
+            const done    = num <= answeredCount;
+            const current = num === (step.questionNum ?? 0);
+            return (
+              <div
+                key={num}
+                className={cn(
+                  'flex items-center justify-center rounded-full font-bold transition-all duration-300 select-none',
+                  done && !current
+                    ? 'h-8 w-8 bg-brand-forest text-white text-xs shadow-sm'
+                    : current
+                    ? 'h-9 w-9 bg-brand-forest text-white text-sm shadow-md ring-4 ring-brand-forest/20'
+                    : 'h-8 w-8 bg-brand-forest/10 text-brand-forest/40 text-xs',
+                )}
+              >
+                {done && !current ? '✓' : num}
+              </div>
+            );
+          })}
         </div>
       </div>
 
