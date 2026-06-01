@@ -30,7 +30,8 @@ import { useCallback, useRef, useState } from 'react';
 export type AspectRatio = '1:1' | '4:5' | '9:16' | '16:9' | '3:4';
 
 export interface GenerateRequestBody {
-  concept_id: string;
+  concept_id?: string;
+  brief_id?: string;
   aspect_ratio: AspectRatio;
   alternates?: number;
   judge_notes?: string;
@@ -57,7 +58,7 @@ export interface RenderRequestSnapshot {
   reference_image_urls: string[];
 }
 
-export type StageName = 'prompt' | 'copy' | 'visual' | 'render' | 'critique' | 'refine';
+export type StageName = 'prompt' | 'copy' | 'visual' | 'render' | 'critique' | 'refine' | 'template_select' | 'fill';
 
 export interface StageState {
   name: StageName;
@@ -80,6 +81,13 @@ export interface GenerationMeta {
   image_url?: string;
 }
 
+export interface TemplateSelectedInfo {
+  template_id: string;
+  template_name: string;
+  template_category: string;
+  rationale: string;
+}
+
 export interface GenerationStreamState {
   status: 'idle' | 'streaming' | 'completed' | 'failed';
   stages: StageState[];
@@ -93,6 +101,8 @@ export interface GenerationStreamState {
    * Ordered: [0] = initial render, [1+] = refine re-renders (at most 1 today).
    */
   renderRequests: RenderRequestSnapshot[];
+  /** Set when a template_selected event arrives (template-generate pipeline only). */
+  templateSelected: TemplateSelectedInfo | null;
 }
 
 /** Default ordered stage skeleton for the full pipeline. Refine slots stay pending unless used. */
@@ -110,7 +120,14 @@ const DIRECT_STAGES: StageState[] = [
   { name: 'render', status: 'pending' },
 ];
 
-const KNOWN_STAGES: StageName[] = ['prompt', 'copy', 'visual', 'render', 'critique', 'refine'];
+/** Stage skeleton for the template-generate (3-stage) pipeline. */
+const TEMPLATE_STAGES: StageState[] = [
+  { name: 'template_select', status: 'pending' },
+  { name: 'fill',            status: 'pending' },
+  { name: 'render',          status: 'pending' },
+];
+
+const KNOWN_STAGES: StageName[] = ['prompt', 'copy', 'visual', 'render', 'critique', 'refine', 'template_select', 'fill'];
 
 function isKnownStage(name: string): name is StageName {
   return (KNOWN_STAGES as string[]).includes(name);
@@ -148,6 +165,7 @@ export function useGenerationStream() {
     stages: INITIAL_STAGES.map((s) => ({ ...s })),
     meta: {},
     renderRequests: [],
+    templateSelected: null,
   });
 
   const abortRef = useRef<AbortController | null>(null);
@@ -158,6 +176,7 @@ export function useGenerationStream() {
       stages: INITIAL_STAGES.map((s) => ({ ...s })),
       meta: {},
       renderRequests: [],
+      templateSelected: null,
     });
   }, []);
 
@@ -166,7 +185,7 @@ export function useGenerationStream() {
     abortRef.current = null;
     setState((prev) =>
       prev.status === 'streaming'
-        ? { ...prev, status: 'failed', error: prev.error ?? 'Cancelled' }
+        ? { ...prev, status: 'failed', error: prev.error ?? 'Cancelled', templateSelected: null }
         : prev,
     );
   }, []);
@@ -178,15 +197,20 @@ export function useGenerationStream() {
     abortRef.current = controller;
 
     const resolvedEndpoint = endpoint ?? '/api/pipeline/generate';
-    const isDirect = resolvedEndpoint === '/api/pipeline/direct-generate';
+    const isDirect = resolvedEndpoint.includes('direct-generate');
+    const isTemplate = resolvedEndpoint.includes('template-generate');
+    const initialStages = isTemplate
+      ? TEMPLATE_STAGES.map((s) => ({ ...s }))
+      : isDirect
+        ? DIRECT_STAGES.map((s) => ({ ...s }))
+        : INITIAL_STAGES.map((s) => ({ ...s }));
 
     setState({
       status: 'streaming',
-      stages: isDirect
-        ? DIRECT_STAGES.map((s) => ({ ...s }))
-        : INITIAL_STAGES.map((s) => ({ ...s })),
+      stages: initialStages,
       meta: {},
       renderRequests: [],
+      templateSelected: null,
       activeConceptId: body.concept_id,
     });
 
@@ -282,6 +306,18 @@ function applyEvent(
   switch (type) {
     case 'pipeline_start': {
       return prev; // already reset in start()
+    }
+
+    case 'template_selected': {
+      return {
+        ...prev,
+        templateSelected: {
+          template_id:       String(event.template_id ?? ''),
+          template_name:     String(event.template_name ?? ''),
+          template_category: String(event.template_category ?? ''),
+          rationale:         String(event.rationale ?? ''),
+        },
+      };
     }
 
     case 'render_request': {

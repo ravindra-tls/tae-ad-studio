@@ -58,8 +58,10 @@ interface GenerationDrawerProps {
   /** Pass-through to orchestrator — see AspectRatioPicker sibling toggle. */
   useReferences: boolean;
   sessionId: string;
-  /** 'pipeline' runs the full 5-stage flow; 'direct' uses the 2-stage Claude → GPT Image-2 flow. */
-  mode?: 'pipeline' | 'direct';
+  /** 'pipeline' runs the full 5-stage flow; 'direct' uses the 2-stage Claude → GPT Image-2 flow; 'template' auto-selects template → fills → renders. */
+  mode?: 'pipeline' | 'direct' | 'template';
+  /** Brief ID — required when mode='template'. */
+  briefId?: string;
 }
 
 const STAGE_LABELS: Record<StageName, string> = {
@@ -69,6 +71,8 @@ const STAGE_LABELS: Record<StageName, string> = {
   render: 'Rendering image',
   critique: 'Critiquing bundle',
   refine: 'Refining weak axis',
+  template_select: 'Selecting best template',
+  fill: 'Filling template with product data',
 };
 
 const STAGE_HINTS: Record<StageName, string> = {
@@ -78,6 +82,8 @@ const STAGE_HINTS: Record<StageName, string> = {
   render: 'GPT Image-2 generates the ad with text and product baked in. Product reference images are always included.',
   critique: 'Adversarial pass on the assembled bundle. Verdict: pass | refine | reject.',
   refine: 'One bounded pass on the weakest axis. Re-renders image if visual is refined.',
+  template_select: 'Claude reads the brief and picks the best-matching ad template from the library.',
+  fill: 'Template placeholders filled with product context, then AI-enriched for the brief.',
 };
 
 export function GenerationDrawer({
@@ -88,6 +94,7 @@ export function GenerationDrawer({
   useReferences,
   sessionId,
   mode = 'pipeline',
+  briefId,
 }: GenerationDrawerProps) {
   // activeIndex walks through concepts sequentially. -1 = not started yet.
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -104,18 +111,34 @@ export function GenerationDrawer({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, state.status, onClose]);
 
-  // Kick off the first concept on open.
+  // Kick off the first concept on open (non-template modes only).
   const startedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!open) return;
+    if (mode === 'template') return; // template mode handles its own start below
     if (concepts.length === 0) return;
     if (activeIndex === -1) {
       setActiveIndex(0);
     }
-  }, [open, concepts.length, activeIndex]);
+  }, [open, concepts.length, activeIndex, mode]);
+
+  // Template mode: single run using briefId — no concept iteration.
+  useEffect(() => {
+    if (mode !== 'template') return;
+    if (!open || !briefId) return;
+    if (startedFor.current === briefId) return;
+    startedFor.current = briefId;
+    reset();
+    void start(
+      { brief_id: briefId, aspect_ratio: aspectRatio, use_references: useReferences },
+      '/api/pipeline/template-generate',
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, briefId, mode, aspectRatio, useReferences]);
 
   // Whenever activeIndex points at a concept we haven't started yet, kick it off.
   useEffect(() => {
+    if (mode === 'template') return; // handled above
     if (!open) return;
     if (activeIndex < 0 || activeIndex >= concepts.length) return;
     const concept = concepts[activeIndex];
@@ -182,11 +205,16 @@ export function GenerationDrawer({
   );
 
   const allDone =
-    results.length > 0 &&
-    results.length === concepts.length &&
-    state.status !== 'streaming';
+    mode === 'template'
+      ? (state.status === 'completed' || state.status === 'failed')
+      : results.length > 0 &&
+        results.length === concepts.length &&
+        state.status !== 'streaming';
 
-  const anyFailed = results.some((r) => r.status === 'failed');
+  const anyFailed =
+    mode === 'template'
+      ? state.status === 'failed'
+      : results.some((r) => r.status === 'failed');
 
   if (!open) return null;
 
@@ -214,11 +242,13 @@ export function GenerationDrawer({
                 Show my thinking
               </h2>
               <p className="mt-0.5 text-xs text-brand-slate">
-                {mode === 'direct'
-                  ? 'Claude builds the prompt + GPT Image-2 generates your ad in one shot.'
-                  : concepts.length === 1
-                    ? 'Running the full pipeline on your selected concept.'
-                    : `Running the pipeline on ${concepts.length} selected concepts, one at a time.`}
+                {mode === 'template'
+                  ? 'Claude selects the best template for your brief, fills it, and generates the ad.'
+                  : mode === 'direct'
+                    ? 'Claude builds the prompt + GPT Image-2 generates your ad in one shot.'
+                    : concepts.length === 1
+                      ? 'Running the full pipeline on your selected concept.'
+                      : `Running the pipeline on ${concepts.length} selected concepts, one at a time.`}
               </p>
             </div>
           </div>
@@ -251,7 +281,7 @@ export function GenerationDrawer({
           )}
 
           {/* Active run stage list */}
-          {activeConcept && (
+          {(mode === 'template' || activeConcept) && (
             <div className="space-y-2">
               {state.stages.map((s) => (
                 <StageRow
@@ -264,6 +294,18 @@ export function GenerationDrawer({
                   error={s.error}
                 />
               ))}
+            </div>
+          )}
+
+          {/* Template selected info card */}
+          {state.templateSelected && (
+            <div className="mt-4 rounded-md border border-brand-teal/15 bg-white px-4 py-3 text-xs">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-brand-slate/60 mb-1">
+                Template selected
+              </p>
+              <p className="font-semibold text-brand-forest">{state.templateSelected.template_name}</p>
+              <p className="text-brand-slate mt-0.5">{state.templateSelected.template_category}</p>
+              <p className="text-brand-slate/70 mt-1.5 italic">{state.templateSelected.rationale}</p>
             </div>
           )}
 
@@ -287,8 +329,35 @@ export function GenerationDrawer({
             </div>
           )}
 
+          {/* Template mode: show generated image when done */}
+          {mode === 'template' && state.meta.image_url && (
+            <div className="mt-6 space-y-3 border-t border-brand-teal/10 pt-5">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-brand-slate">
+                Result
+              </h3>
+              <div className="flex gap-3 rounded-md border border-brand-teal/15 bg-white p-3">
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded border border-brand-teal/10 bg-brand-cream/50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={state.meta.image_url}
+                    alt="Generated ad"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <span className="truncate text-sm font-medium text-brand-forest">
+                    Generated ad
+                  </span>
+                  <Badge variant="outline" className="mt-1 w-fit border-brand-teal/30 text-brand-teal">
+                    Done
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Per-concept results (shown once at least one concept finishes) */}
-          {results.length > 0 && (
+          {mode !== 'template' && results.length > 0 && (
             <div className="mt-6 space-y-3 border-t border-brand-teal/10 pt-5">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-brand-slate">
                 Results
@@ -314,8 +383,12 @@ export function GenerationDrawer({
           {allDone && (
             <div className="mt-6 rounded-md border border-brand-teal/20 bg-white px-4 py-3 text-sm text-brand-forest">
               {anyFailed
-                ? 'Pipeline finished with errors. Results shown above.'
-                : 'All concepts generated successfully.'}
+                ? mode === 'template'
+                  ? 'Generation failed. See error above.'
+                  : 'Pipeline finished with errors. Results shown above.'
+                : mode === 'template'
+                  ? 'Ad generated successfully.'
+                  : 'All concepts generated successfully.'}
             </div>
           )}
         </div>

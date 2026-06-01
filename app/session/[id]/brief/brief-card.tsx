@@ -218,7 +218,7 @@ export function BriefCard({
               className="gap-2"
             >
               <Sparkles className="h-4 w-4" />
-              {approving ? 'Generating concepts…' : 'Looks good — generate concepts'}
+              {approving ? 'Starting…' : 'Generate ad from template'}
             </Button>
           </div>
         )}
