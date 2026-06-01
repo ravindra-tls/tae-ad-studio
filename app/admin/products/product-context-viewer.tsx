@@ -3,11 +3,13 @@
 import { useState, useTransition, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronRight, Pencil, X, Check, Plus, Trash2, Loader2, Info, Camera, ImageOff } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, X, Check, Plus, Trash2, Loader2, Info, Camera, ImageOff, BookOpen, RefreshCw } from 'lucide-react';
 import type { Product, ProductContext, Ingredient, Claim, ColorEntry } from '@/types';
 import { updateProduct, deleteProduct, uploadProductThumbnail, seedProductThumbnails, createProduct } from './actions';
 import type { ProductUpdatePayload, ProductCreatePayload } from './actions';
 import ProductSynthesizeModal from '@/components/ProductSynthesizeModal';
+import type { ResearchRow } from './page';
+import type { PositioningResearch } from '@/lib/research/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Colour conversion helpers
@@ -835,10 +837,113 @@ function IngredientsEditor({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Research section
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ResearchSection({
+  research,
+  generating,
+  onRegenerate,
+}: {
+  research: ResearchRow | null;
+  generating: boolean;
+  onRegenerate: () => void;
+}) {
+  if (generating) {
+    return (
+      <div className="px-4 py-5 flex flex-col items-center gap-2 text-center">
+        <Loader2 className="h-5 w-5 text-brand-forest/40 animate-spin" />
+        <p className="text-xs text-brand-slate/60">Generating audience research…</p>
+        <p className="text-[11px] text-brand-slate/40">Claude is searching Reddit, reviews & forums. Takes ~60s.</p>
+      </div>
+    );
+  }
+
+  if (!research) {
+    return (
+      <div className="px-4 py-5 text-center">
+        <p className="text-xs text-brand-slate/50">No research generated yet.</p>
+        <p className="text-[11px] text-brand-slate/40 mt-1">
+          Research is auto-generated when a product is created.
+        </p>
+        <button
+          onClick={onRegenerate}
+          className="mt-3 flex items-center gap-1.5 mx-auto text-[11px] text-brand-forest/60 hover:text-brand-forest transition-colors"
+        >
+          <RefreshCw className="h-3 w-3" /> Generate now
+        </button>
+      </div>
+    );
+  }
+
+  const r = research.research;
+
+  return (
+    <div className="divide-y divide-brand-sage/10">
+      {/* Meta row */}
+      <div className="flex items-center justify-between px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium text-brand-slate/60">
+            {research.market} · {research.segment}
+          </span>
+          <span className="text-[10px] bg-brand-lime/20 text-brand-forest px-1.5 py-0.5 rounded font-medium">
+            {research.research_type.replace('_', ' ')}
+          </span>
+        </div>
+        <button
+          onClick={onRegenerate}
+          className="flex items-center gap-1 text-[11px] text-brand-slate/50 hover:text-brand-forest transition-colors"
+          title="Regenerate research"
+        >
+          <RefreshCw className="h-3 w-3" /> Regenerate
+        </button>
+      </div>
+
+      {/* Executive summary */}
+      <div className="px-4 py-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-brand-slate/40 mb-1.5">Summary</p>
+        <p className="text-xs text-brand-navy leading-relaxed line-clamp-4">
+          {r.executive_summary}
+        </p>
+      </div>
+
+      {/* Personas */}
+      {r.personas?.length > 0 && (
+        <div className="px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-brand-slate/40 mb-2">
+            {r.personas.length} Personas
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {r.personas.map((p) => (
+              <span
+                key={p.archetype_name}
+                className="text-[11px] bg-brand-cream px-2 py-0.5 rounded-full text-brand-forest/70 border border-brand-sage/20"
+              >
+                {p.archetype_name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Language guide — top words */}
+      {r.language_guide?.words_she_uses?.length > 0 && (
+        <div className="px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-brand-slate/40 mb-1.5">Her Language</p>
+          <p className="text-xs text-brand-slate/70 leading-relaxed">
+            {r.language_guide.words_she_uses.slice(0, 12).join(' · ')}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main viewer
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ProductContextViewer({ products }: { products: Product[] }) {
+export function ProductContextViewer({ products, researchByProduct }: { products: Product[]; researchByProduct: Record<string, ResearchRow> }) {
   const [activeId,        setActiveId]        = useState<string>(products[0]?.id ?? '');
   const [editMode,        setEditMode]        = useState(false);
   const [draft,           setDraft]           = useState<Draft | null>(null);
@@ -851,6 +956,7 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
   const [seedingImages,   setSeedingImages]   = useState(false);
   const [synthModalOpen,  setSynthModalOpen]  = useState(false);
   const [synthTarget,     setSynthTarget]     = useState<Product | null>(null);
+  const [researchGenerating, setResearchGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const product = products.find((p) => p.id === activeId) ?? products[0];
@@ -956,7 +1062,35 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
         compliance_rules: data.compliance_rules || [],
         context:          data.context || null,
       };
-      await createProduct(payload);
+      const newProduct = await createProduct(payload);
+      // Fire-and-forget research generation for the new product
+      if (newProduct?.id) {
+        fetch('/api/admin/research/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: newProduct.id }),
+        }).catch(console.error);
+      }
+    }
+  };
+
+  const handleTriggerResearch = async (productId: string) => {
+    setResearchGenerating(true);
+    try {
+      const res = await fetch('/api/admin/research/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? `Server error ${res.status}`);
+      }
+      // Success — reload so the new research section populates
+      window.location.reload();
+    } catch (err) {
+      console.error('Research trigger failed:', err);
+      setResearchGenerating(false);
     }
   };
 
@@ -1407,6 +1541,20 @@ export function ProductContextViewer({ products }: { products: Product[] }) {
             </div>
           )}
         </Section>
+
+        {/* ── Audience Research ── */}
+        {(() => {
+          const research = researchByProduct[product.name.toLowerCase()] ?? null;
+          return (
+            <Section title="Audience Research" badge={research ? `${research.research?.personas?.length ?? 0} personas` : researchGenerating ? '…' : 'none'} defaultOpen={false}>
+              <ResearchSection
+                research={research}
+                generating={researchGenerating}
+                onRegenerate={() => handleTriggerResearch(product.id)}
+              />
+            </Section>
+          );
+        })()}
 
       </div>
 

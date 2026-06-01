@@ -1,14 +1,36 @@
 import { createServiceClient } from '@/lib/supabase/server';
 import { ProductContextViewer } from './product-context-viewer';
 import type { Product } from '@/types';
+import type { PositioningResearch } from '@/lib/research/types';
+
+export const dynamic = 'force-dynamic';
+
+export type ResearchRow = {
+  id: string;
+  product_name: string;
+  brand: string;
+  market: string;
+  segment: string;
+  research: PositioningResearch;
+  research_type: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
 
 export default async function AdminProductsPage() {
   const supabase = await createServiceClient();
 
-  const { data: products } = await supabase
-    .from('products')
-    .select('*')
-    .order('brand');
+  const [{ data: products }, { data: researchRows }] = await Promise.all([
+    supabase.from('products').select('*').order('brand'),
+    supabase.from('positioning_research').select('*').eq('is_active', true),
+  ]);
+
+  // Build a map keyed by product_name (lowercase) for fast lookup
+  const researchByProduct: Record<string, ResearchRow> = {};
+  for (const row of (researchRows ?? []) as ResearchRow[]) {
+    researchByProduct[row.product_name.toLowerCase()] = row;
+  }
 
   return (
     <div className="animate-fade-in">
@@ -19,7 +41,10 @@ export default async function AdminProductsPage() {
         </span>
       </div>
       <div className="stagger-item" style={{ animationDelay: '100ms' }}>
-        <ProductContextViewer products={(products || []) as Product[]} />
+        <ProductContextViewer
+          products={(products || []) as Product[]}
+          researchByProduct={researchByProduct}
+        />
       </div>
     </div>
   );

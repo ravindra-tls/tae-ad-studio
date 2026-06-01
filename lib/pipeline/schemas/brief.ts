@@ -59,6 +59,10 @@ export const BriefStructured = z.object({
     .string()
     .optional()
     .describe('Populated only when wild_card=true: how to subvert brand conventions'),
+  narrative_brief: z
+    .string()
+    .optional()
+    .describe('AI-generated prose brief. Present when source=quiz and persona selected.'),
 });
 
 export type BriefStructured = z.infer<typeof BriefStructured>;

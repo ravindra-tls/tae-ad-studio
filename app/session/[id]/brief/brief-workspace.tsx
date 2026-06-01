@@ -23,7 +23,7 @@ import { Breadcrumb } from '@/components/Breadcrumb';
 import type { Brief, Concept, Session, Product } from '@/types';
 import type { SamenessRound } from '@/lib/pipeline/stages/sameness';
 import type { AspectRatio } from '@/lib/hooks/use-generation-stream';
-import { BriefQuiz } from './brief-quiz';
+import { BriefQuizV2 } from './brief-quiz-v2';
 import { BriefCard } from './brief-card';
 import { ConceptGallery } from './concept-gallery';
 import { GenerationDrawer } from './generation-drawer';
@@ -32,6 +32,7 @@ interface BriefWorkspaceProps {
   session: Session & { product?: Product };
   initialBrief: Brief | null;
   initialConcepts: Concept[];
+  research: import('@/lib/research/types').PositioningResearch | null;
 }
 
 type Phase = 'form' | 'brief_ready' | 'concepts_loading' | 'concepts_ready';
@@ -40,6 +41,7 @@ export function BriefWorkspace({
   session,
   initialBrief,
   initialConcepts,
+  research,
 }: BriefWorkspaceProps) {
   const [brief, setBrief] = useState<Brief | null>(initialBrief);
   const [concepts, setConcepts] = useState<Concept[]>(initialConcepts);
@@ -56,11 +58,10 @@ export function BriefWorkspace({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerConceptIds, setDrawerConceptIds] = useState<string[]>([]);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
-  // Reference-image opt-in. Defaults OFF because xAI /edits (the only route
-  // that consumes refs) sacrifices composition quality for product likeness —
-  // not what marketers want for on-feed ads. On-switch: useful when the ad
-  // concept hinges on an exact SKU or packaging render.
-  const [useReferences, setUseReferences] = useState(false);
+  // In direct-generate mode, product reference images are always used to keep
+  // the correct product in the ad. Default ON — direct mode fetches them
+  // server-side regardless, but keeping the toggle on matches user expectation.
+  const [useReferences, setUseReferences] = useState(true);
 
   // Resolve the ID list to full Concept rows in declared order. Memoized so
   // the drawer's effect dependency on `concepts` stays stable until selection
@@ -85,6 +86,8 @@ export function BriefWorkspace({
     objective: string;
     strictness: 'off' | 'loose' | 'tight';
     wild_card: boolean;
+    funnel_stage?: 'tofu' | 'mofu' | 'bofu';
+    persona_name?: string;
   }) {
     setBriefLoading(true);
     setError(null);
@@ -96,7 +99,7 @@ export function BriefWorkspace({
         body: JSON.stringify({
           session_id: session.id,
           ...input,
-          source: 'freeform',
+          source: input.funnel_stage ? 'quiz' : 'freeform',
         }),
       });
       const data = await res.json();
@@ -208,8 +211,9 @@ export function BriefWorkspace({
 
       {/* Step 1: Brief quiz (gamified multi-step questionnaire). */}
       {phase === 'form' && (
-        <BriefQuiz
+        <BriefQuizV2
           productName={productName}
+          research={research}
           onSubmit={handleDraftBrief}
           loading={briefLoading}
         />
@@ -254,6 +258,7 @@ export function BriefWorkspace({
         aspectRatio={aspectRatio}
         useReferences={useReferences}
         sessionId={session.id}
+        mode="direct"
       />
     </div>
   );

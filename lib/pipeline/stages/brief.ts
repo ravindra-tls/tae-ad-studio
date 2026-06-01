@@ -24,6 +24,7 @@ import {
   BRIEF_SYSTEM_PROMPT,
   buildBriefUserMessage,
 } from '../prompts/brief';
+import type { PositioningResearch } from '@/lib/research/types';
 
 /** Model identifier — pinned so eval history is comparable. Bump deliberately. */
 const BRIEF_MODEL = 'claude-sonnet-4-20250514';
@@ -36,6 +37,10 @@ export interface BriefStageArgs {
   source: 'quiz' | 'freeform' | 'imported';
   brand: BrandConfig | null;
   product: Product;
+  /** Optional: positioning research injected from the `positioning_research` table. */
+  research_context?: PositioningResearch | null;
+  funnel_stage?: 'tofu' | 'mofu' | 'bofu';
+  persona_name?: string;
 }
 
 export interface BriefStageOutput {
@@ -101,6 +106,9 @@ export const briefStage: Stage<BriefStageArgs, BriefStageOutput> = {
       objective: parsed.data.objective,
       strictness: parsed.data.strictness,
       wild_card: parsed.data.wild_card,
+      research_context: input.research_context ?? null,
+      funnel_stage: input.funnel_stage,
+      persona_name: input.persona_name,
     });
 
     let response: Anthropic.Message;

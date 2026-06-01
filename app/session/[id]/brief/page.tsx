@@ -49,6 +49,18 @@ export default async function BriefPage({ params }: { params: { id: string } }) 
   if (!sessionRow) redirect('/dashboard');
   const session = sessionRow as Session & { product: Session['product'] };
 
+  // Fetch positioning research for this product
+  const { data: researchRow } = await service
+    .from('positioning_research')
+    .select('research')
+    .eq('product_name', (session.product as any)?.name ?? '')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const research = (researchRow?.research as import('@/lib/research/types').PositioningResearch) ?? null;
+
   // ── Fetch the most recent brief for this session, if any ─────────────────
   // On a page refresh we want to resume where the user left off rather than
   // starting over. A newer brief supersedes older ones (V1 treats each brief
@@ -78,6 +90,7 @@ export default async function BriefPage({ params }: { params: { id: string } }) 
       session={session}
       initialBrief={latestBrief}
       initialConcepts={concepts}
+      research={research}
     />
   );
 }

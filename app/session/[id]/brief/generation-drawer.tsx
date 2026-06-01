@@ -58,9 +58,12 @@ interface GenerationDrawerProps {
   /** Pass-through to orchestrator — see AspectRatioPicker sibling toggle. */
   useReferences: boolean;
   sessionId: string;
+  /** 'pipeline' runs the full 5-stage flow; 'direct' uses the 2-stage Claude → GPT Image-2 flow. */
+  mode?: 'pipeline' | 'direct';
 }
 
 const STAGE_LABELS: Record<StageName, string> = {
+  prompt: 'Assembling ad prompt',
   copy: 'Writing copy',
   visual: 'Designing visual spec',
   render: 'Rendering image',
@@ -69,9 +72,10 @@ const STAGE_LABELS: Record<StageName, string> = {
 };
 
 const STAGE_HINTS: Record<StageName, string> = {
+  prompt: 'Claude reads concept + brief + product and writes a text-inclusive GPT Image-2 prompt.',
   copy: 'Headline, subhead, body, CTA — 3 alternates each.',
   visual: 'Composition, lighting, text zones, then assembles the image prompt.',
-  render: 'xAI generates the raw image. References honored if the product has them.',
+  render: 'GPT Image-2 generates the ad with text and product baked in. Product reference images are always included.',
   critique: 'Adversarial pass on the assembled bundle. Verdict: pass | refine | reject.',
   refine: 'One bounded pass on the weakest axis. Re-renders image if visual is refined.',
 };
@@ -83,6 +87,7 @@ export function GenerationDrawer({
   aspectRatio,
   useReferences,
   sessionId,
+  mode = 'pipeline',
 }: GenerationDrawerProps) {
   // activeIndex walks through concepts sequentially. -1 = not started yet.
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -117,15 +122,18 @@ export function GenerationDrawer({
     if (startedFor.current === concept.id) return;
     startedFor.current = concept.id;
     reset();
-    void start({
-      concept_id: concept.id,
-      aspect_ratio: aspectRatio,
-      alternates: 3,
-      auto_refine: true,
-      use_references: useReferences,
-    });
+    void start(
+      {
+        concept_id: concept.id,
+        aspect_ratio: aspectRatio,
+        alternates: 3,
+        auto_refine: true,
+        use_references: useReferences,
+      },
+      mode === 'direct' ? '/api/pipeline/direct-generate' : '/api/pipeline/generate',
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, activeIndex, concepts, useReferences]);
+  }, [open, activeIndex, concepts, useReferences, mode]);
 
   // When the current run terminates, capture its result and either advance
   // to the next concept or stop.
@@ -206,9 +214,11 @@ export function GenerationDrawer({
                 Show my thinking
               </h2>
               <p className="mt-0.5 text-xs text-brand-slate">
-                {concepts.length === 1
-                  ? 'Running the full pipeline on your selected concept.'
-                  : `Running the pipeline on ${concepts.length} selected concepts, one at a time.`}
+                {mode === 'direct'
+                  ? 'Claude builds the prompt + GPT Image-2 generates your ad in one shot.'
+                  : concepts.length === 1
+                    ? 'Running the full pipeline on your selected concept.'
+                    : `Running the pipeline on ${concepts.length} selected concepts, one at a time.`}
               </p>
             </div>
           </div>
@@ -420,7 +430,7 @@ function StageRow({
  */
 function RenderRequestCard({ request }: { request: RenderRequestSnapshot }) {
   const endpointLabel =
-    request.endpoint === 'edits' ? 'xAI /edits' : 'xAI /generations';
+    request.endpoint === 'edits' ? 'GPT Image-2 /edits' : 'GPT Image-2 /generations';
   return (
     <div className="rounded-md border border-brand-teal/15 bg-white p-3 text-xs">
       <div className="flex flex-wrap items-center gap-1.5">

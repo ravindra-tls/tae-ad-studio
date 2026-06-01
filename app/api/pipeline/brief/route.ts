@@ -28,6 +28,7 @@ import { getBrandConfig } from '@/lib/brand-config';
 import { briefStage } from '@/lib/pipeline/stages/brief';
 import type { StageProgress } from '@/lib/pipeline/types';
 import type { Product } from '@/types';
+import type { PositioningResearch } from '@/lib/research/types';
 
 export const maxDuration = 60;
 
@@ -37,6 +38,8 @@ const RequestBody = z.object({
   strictness: z.enum(['off', 'loose', 'tight']).optional(),
   wild_card: z.boolean().optional(),
   source: z.enum(['quiz', 'freeform', 'imported']).optional(),
+  funnel_stage: z.enum(['tofu', 'mofu', 'bofu']).optional(),
+  persona_name: z.string().max(200).optional(),
 });
 
 export async function POST(request: Request) {
@@ -97,6 +100,20 @@ export async function POST(request: Request) {
   const strictness =
     parsed.strictness ?? brand?.default_strictness ?? 'loose';
 
+  // ── Fetch positioning research (best match for this product) ──────────────
+  // Queries for the most recent active research document that matches by
+  // product name. Falls back gracefully to null — research is optional.
+  const { data: researchRow } = await service
+    .from('positioning_research')
+    .select('research')
+    .eq('product_name', product.name)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const research = (researchRow?.research as PositioningResearch) ?? null;
+
   // ── Run the stage ─────────────────────────────────────────────────────────
   const trace: StageProgress[] = [];
   let stageOutput;
@@ -109,6 +126,9 @@ export async function POST(request: Request) {
         source: parsed.source ?? 'freeform',
         brand,
         product: product as Product,
+        research_context: research,
+        funnel_stage: parsed.funnel_stage,
+        persona_name: parsed.persona_name,
       },
       trace,
     );
@@ -146,6 +166,8 @@ export async function POST(request: Request) {
         _meta: {
           prompt_version: stageOutput.prompt_version,
           model: stageOutput.model,
+          funnel_stage: parsed.funnel_stage ?? null,
+          persona_name: parsed.persona_name ?? null,
         },
       },
       source: parsed.source ?? 'freeform',

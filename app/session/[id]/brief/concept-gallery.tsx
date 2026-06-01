@@ -15,6 +15,7 @@
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { ChevronDown, ChevronRight, Check, ArrowRight, Loader2 } from 'lucide-react';
 import type { Concept } from '@/types';
 import type {

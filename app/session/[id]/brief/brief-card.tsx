@@ -31,6 +31,7 @@ interface BriefStructured {
   hypothesis?: string;
   tone_direction?: string;
   wild_card_interpretation?: string;
+  narrative_brief?: string;
 }
 
 interface BriefCardProps {
@@ -81,9 +82,30 @@ export function BriefCard({
   alreadyGenerated,
 }: BriefCardProps) {
   const s = (brief.structured as BriefStructured | null) ?? {};
+  const meta = ((s as any)._meta ?? {}) as { funnel_stage?: string; persona_name?: string };
 
   return (
     <div className="max-w-2xl mx-auto mt-6">
+      {/* Narrative brief — shown when quiz source + persona selected */}
+      {s.narrative_brief && (
+        <div className="rounded-2xl border-2 border-brand-forest/15 bg-brand-forest/[0.03] px-5 py-5 mb-5">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-brand-forest/50 mb-2">
+            AUTO-GENERATED BRIEF — READY TO APPROVE
+          </p>
+          <p className="text-sm text-brand-navy leading-relaxed">{s.narrative_brief}</p>
+          {(meta.persona_name || meta.funnel_stage) && (
+            <p className="text-[11px] text-brand-slate/50 mt-3 pt-3 border-t border-brand-forest/10">
+              Built from research
+              {meta.persona_name && (
+                <> · <span className="text-brand-forest font-medium">{meta.persona_name}</span></>
+              )}
+              {meta.funnel_stage && (
+                <> · <span className="font-medium uppercase">{meta.funnel_stage}</span></>
+              )}
+            </p>
+          )}
+        </div>
+      )}
       {/* Step header — matches quiz step numbering style */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">

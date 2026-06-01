@@ -14,7 +14,7 @@
  * zod and rejects malformed responses rather than letting them into the DB.
  */
 
-export const BRIEF_PROMPT_VERSION = '1.0.0';
+export const BRIEF_PROMPT_VERSION = '1.1.0';
 
 export const BRIEF_SYSTEM_PROMPT = `
 You are a senior performance-marketing strategist at a DTC Ayurvedic / wellness
@@ -71,6 +71,13 @@ CRITICAL RULES:
 
 6. Keep lists concise: 3-5 pains, 3-5 jobs_to_be_done, 3-5 proof_points. Prefer
    sharper items over longer lists.
+
+7. FUNNEL STAGE — when FUNNEL_STAGE is specified, it governs the entire brief:
+   - "tofu": Cold audience who has never heard of this brand. Hypothesis must test an awareness or emotion angle. offer.cta MUST be "read the story", "learn more", or similar — never "shop now". tone_direction: empathy-first, broad hook, curiosity-driven.
+   - "mofu": Category-aware but uncommitted prospect. Hypothesis tests a trust or proof angle. Proof points, comparison, and credibility are the primary lever. offer.cta: "read the story", "see how it works", "watch the video". tone_direction: warm-credible, evidence-led.
+   - "bofu": Warm retargeting audience with purchase intent. Hypothesis tests an urgency or offer angle. offer.cta MUST be "shop now", "claim your offer", or "get yours today". tone_direction: urgent, personal, direct.
+
+8. NARRATIVE BRIEF — when a SELECTED_PERSONA section is present, add a "narrative_brief" field to your JSON output. This is a 2-4 sentence prose brief in the voice of a creative director briefing a designer. It must name the persona archetype, describe her emotional reality in one sentence, state the creative direction clearly, and end with the CTA direction. Write it in plain English. Do not use marketing jargon. If no SELECTED_PERSONA is given, omit this field entirely.
 `.trim();
 
 /**
@@ -78,6 +85,7 @@ CRITICAL RULES:
  * so the stage file stays focused on Claude plumbing.
  */
 export function buildBriefUserMessage(args: {
+  research_context?: import('@/lib/research/types').PositioningResearch | null;
   brand: {
     name: string;
     voice: unknown;
@@ -98,6 +106,8 @@ export function buildBriefUserMessage(args: {
   objective: string;
   strictness: 'off' | 'loose' | 'tight';
   wild_card: boolean;
+  funnel_stage?: 'tofu' | 'mofu' | 'bofu';
+  persona_name?: string;
 }): string {
   const parts: string[] = [];
 
@@ -134,9 +144,88 @@ export function buildBriefUserMessage(args: {
 
   parts.push(`## Marketer's objective\n${args.objective.trim()}`);
 
+  // ── Audience research context (optional) ──────────────────────────────────
+  // When a PositioningResearch document exists for this product, inject the
+  // most relevant parts to ground the brief in real audience intelligence.
+  if (args.research_context) {
+    const r = args.research_context;
+    const researchParts: string[] = [];
+
+    researchParts.push(
+      `### Executive summary\n${r.executive_summary}`,
+    );
+
+    if (r.personas.length > 0) {
+      const personaSummaries = r.personas
+        .map(
+          (p) =>
+            `**${p.archetype_name}** (${p.age_range}, ${p.location})\n` +
+            `Tagline: ${p.tagline}\n` +
+            `Deepest fears: ${p.deepest_fears.slice(0, 3).join('; ')}\n` +
+            `Deepest desires: ${p.deepest_desires.slice(0, 3).join('; ')}\n` +
+            `Emotional triggers: ${p.emotional_triggers.map((t) => `${t.label} — ${t.description}`).join(' | ')}`,
+        )
+        .join('\n\n');
+      researchParts.push(`### Personas\n${personaSummaries}`);
+    }
+
+    if (r.emotional_landscape.universal_turn_offs.length > 0) {
+      researchParts.push(
+        `### Universal turn-offs (never do)\n${r.emotional_landscape.universal_turn_offs.join('\n')}`,
+      );
+    }
+
+    if (r.language_guide.words_she_uses.length > 0) {
+      researchParts.push(
+        `### Her language (use these words)\n${r.language_guide.words_she_uses.join(', ')}`,
+      );
+    }
+
+    if (Object.keys(r.messaging_framework).length > 0) {
+      const frameworkLines = Object.entries(r.messaging_framework)
+        .map(([persona, approach]) => `- **${persona}:** ${approach}`)
+        .join('\n');
+      researchParts.push(`### Messaging framework by persona\n${frameworkLines}`);
+    }
+
+    parts.push(
+      `## Audience research context\n` +
+        `This research is drawn from real audience data for ${r.product_name} in the ${r.market} market ` +
+        `(segment: ${r.segment}). Use it to ground your brief in authentic audience intelligence — ` +
+        `but your brief must still be shaped by the marketer's objective above.\n\n` +
+        researchParts.join('\n\n'),
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   parts.push(
     `## Controls\n- STRICTNESS = ${args.strictness}\n- WILD_CARD = ${args.wild_card}`,
   );
+
+  if (args.funnel_stage) {
+    parts.push(
+      `## Funnel Stage\nFUNNEL_STAGE = ${args.funnel_stage.toUpperCase()}\nApply CRITICAL RULE 7 strictly.`
+    );
+  }
+
+  if (args.persona_name && args.research_context) {
+    const selectedPersona = args.research_context.personas.find(
+      (p) => p.archetype_name === args.persona_name
+    );
+    if (selectedPersona) {
+      parts.push(
+        `## Selected Persona\nSELECTED_PERSONA = ${selectedPersona.archetype_name}\n` +
+        `Age: ${selectedPersona.age_range} | Location: ${selectedPersona.location}\n` +
+        `Tagline: "${selectedPersona.tagline}"\n` +
+        `Deepest fears: ${selectedPersona.deepest_fears.join('; ')}\n` +
+        `Deepest desires: ${selectedPersona.deepest_desires.join('; ')}\n` +
+        (selectedPersona.verbatim_quotes.length > 0
+          ? `Her actual words:\n${selectedPersona.verbatim_quotes.slice(0, 3).map((q: string) => `• "${q}"`).join('\n')}\n`
+          : '') +
+        `\nWrite the entire brief — including narrative_brief — specifically for THIS PERSON. Do not genericize. She is real. Write to her emotional reality.`
+      );
+    }
+  }
 
   parts.push(
     'Produce the brief JSON now. Return ONLY the JSON object, no prose.',

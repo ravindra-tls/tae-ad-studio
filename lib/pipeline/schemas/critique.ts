@@ -28,8 +28,8 @@ export type CritiqueStageInput = z.infer<typeof CritiqueStageInput>;
 export const AxisCritique = z.object({
   /** One-word summary: strong | ok | weak. Drives UI coloring. */
   rating: z.enum(['strong', 'ok', 'weak']),
-  /** One-sentence assessment. */
-  note: z.string().min(1).max(400),
+  /** Actionable assessment — 1-3 sentences. */
+  note: z.string().min(1).max(1200),
 });
 export type AxisCritique = z.infer<typeof AxisCritique>;
 
@@ -68,7 +68,7 @@ export const CritiqueStructured = z.object({
   refine_targets: z.array(RefineTarget).default([]),
 
   /** One-paragraph overall summary — what the judge saw. */
-  summary: z.string().min(1).max(800),
+  summary: z.string().min(1).max(1600),
 });
 
 export type CritiqueStructured = z.infer<typeof CritiqueStructured>;

@@ -203,6 +203,14 @@ const STEPS: Step[] = [
 
 const TOTAL_QUESTIONS = STEPS.filter((s) => s.questionNum !== undefined).length;
 
+// ─── Checkpoint groups — divide questions into 3 named milestones ─────────────
+// Each checkpoint is "reached" once all its questions are answered.
+const CHECKPOINTS = [
+  { label: 'Audience',  questions: [1, 2] },   // Who + blocker
+  { label: 'Strategy',  questions: [3, 4, 5] }, // Emotion + CTA + details
+  { label: 'Voice',     questions: [6, 7] },    // Voice level + wild card
+] as const;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildObjective(a: QuizAnswers): string {
@@ -674,35 +682,60 @@ export function BriefQuiz({ productName, onSubmit, loading }: BriefQuizProps) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* ── Step tracker — numbered dots only, no redundant bar ── */}
-      <div className="mb-8 flex flex-col items-center gap-3">
-        {/* Motivating label */}
-        <p className="text-sm font-medium text-brand-slate transition-all duration-300">
-          {progressLabel}
-        </p>
-        {/* Numbered step dots */}
-        <div className="flex items-center gap-2">
-          {STEPS.filter((s) => s.questionNum !== undefined).map((s) => {
-            const num = s.questionNum ?? 0;
-            const done    = num <= answeredCount;
-            const current = num === (step.questionNum ?? 0);
+      {/* ── Checkpoint stepper — 3 milestone groups ── */}
+      <div className="mb-8 px-4">
+        <div className="relative flex items-center justify-between">
+          {/* Full track */}
+          <div className="absolute inset-x-0 h-0.5 bg-brand-forest/15 top-4 -translate-y-1/2" />
+          {/* Filled track — advances when a checkpoint group is fully done */}
+          {(() => {
+            const currentQ = step.questionNum ?? 0;
+            // How far along we are as a fraction (0–1) based on current question
+            const fraction = currentQ === 0
+              ? 0
+              : (currentQ - 1) / (TOTAL_QUESTIONS - 1);
             return (
               <div
-                key={num}
-                className={cn(
-                  'flex items-center justify-center rounded-full font-bold transition-all duration-300 select-none',
-                  done && !current
-                    ? 'h-8 w-8 bg-brand-forest text-white text-xs shadow-sm'
-                    : current
-                    ? 'h-9 w-9 bg-brand-forest text-white text-sm shadow-md ring-4 ring-brand-forest/20'
-                    : 'h-8 w-8 bg-brand-forest/10 text-brand-forest/40 text-xs',
-                )}
-              >
-                {done && !current ? '✓' : num}
+                className="absolute left-0 h-0.5 bg-brand-forest transition-all duration-500 top-4 -translate-y-1/2"
+                style={{ width: `${fraction * 100}%` }}
+              />
+            );
+          })()}
+          {/* Checkpoint circles */}
+          {CHECKPOINTS.map((cp, i) => {
+            const currentQ   = step.questionNum ?? 0;
+            const lastQ      = cp.questions[cp.questions.length - 1];
+            const firstQ     = cp.questions[0];
+            const done       = currentQ > lastQ;
+            const active     = currentQ >= firstQ && currentQ <= lastQ;
+            return (
+              <div key={i} className="relative z-10 flex flex-col items-center gap-2">
+                <div
+                  className={cn(
+                    'flex items-center justify-center rounded-full border-2 font-bold transition-all duration-300 select-none',
+                    done
+                      ? 'h-8 w-8 bg-brand-forest border-brand-forest text-white text-sm shadow-sm'
+                      : active
+                      ? 'h-9 w-9 bg-brand-forest border-brand-forest text-white text-base shadow-md ring-4 ring-brand-forest/20'
+                      : 'h-8 w-8 bg-white border-brand-forest/20 text-brand-forest/30 text-sm',
+                  )}
+                >
+                  {done ? '✓' : i + 1}
+                </div>
+                <span className={cn(
+                  'text-[11px] font-medium transition-colors duration-300 whitespace-nowrap',
+                  done || active ? 'text-brand-forest' : 'text-brand-forest/30',
+                )}>
+                  {cp.label}
+                </span>
               </div>
             );
           })}
         </div>
+        {/* Motivating label */}
+        <p className="text-center text-xs text-brand-slate mt-3 transition-all duration-300">
+          {step.type !== 'transition' ? progressLabel : ''}
+        </p>
       </div>
 
       {/* ── Question card ── */}

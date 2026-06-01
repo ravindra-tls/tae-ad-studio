@@ -57,7 +57,7 @@ export interface RenderRequestSnapshot {
   reference_image_urls: string[];
 }
 
-export type StageName = 'copy' | 'visual' | 'render' | 'critique' | 'refine';
+export type StageName = 'prompt' | 'copy' | 'visual' | 'render' | 'critique' | 'refine';
 
 export interface StageState {
   name: StageName;
@@ -95,7 +95,7 @@ export interface GenerationStreamState {
   renderRequests: RenderRequestSnapshot[];
 }
 
-/** Default ordered stage skeleton. Refine slots stay pending unless used. */
+/** Default ordered stage skeleton for the full pipeline. Refine slots stay pending unless used. */
 const INITIAL_STAGES: StageState[] = [
   { name: 'copy', status: 'pending' },
   { name: 'visual', status: 'pending' },
@@ -104,7 +104,13 @@ const INITIAL_STAGES: StageState[] = [
   { name: 'refine', status: 'pending' },
 ];
 
-const KNOWN_STAGES: StageName[] = ['copy', 'visual', 'render', 'critique', 'refine'];
+/** Stage skeleton for the direct (2-stage) pipeline. */
+const DIRECT_STAGES: StageState[] = [
+  { name: 'prompt', status: 'pending' },
+  { name: 'render', status: 'pending' },
+];
+
+const KNOWN_STAGES: StageName[] = ['prompt', 'copy', 'visual', 'render', 'critique', 'refine'];
 
 function isKnownStage(name: string): name is StageName {
   return (KNOWN_STAGES as string[]).includes(name);
@@ -165,15 +171,20 @@ export function useGenerationStream() {
     );
   }, []);
 
-  const start = useCallback(async (body: GenerateRequestBody) => {
+  const start = useCallback(async (body: GenerateRequestBody, endpoint?: string) => {
     // Reset any prior run
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
+    const resolvedEndpoint = endpoint ?? '/api/pipeline/generate';
+    const isDirect = resolvedEndpoint === '/api/pipeline/direct-generate';
+
     setState({
       status: 'streaming',
-      stages: INITIAL_STAGES.map((s) => ({ ...s })),
+      stages: isDirect
+        ? DIRECT_STAGES.map((s) => ({ ...s }))
+        : INITIAL_STAGES.map((s) => ({ ...s })),
       meta: {},
       renderRequests: [],
       activeConceptId: body.concept_id,
@@ -181,7 +192,7 @@ export function useGenerationStream() {
 
     let response: Response;
     try {
-      response = await fetch('/api/pipeline/generate', {
+      response = await fetch(resolvedEndpoint, {
         method: 'POST',
         credentials: 'include',
         headers: {
