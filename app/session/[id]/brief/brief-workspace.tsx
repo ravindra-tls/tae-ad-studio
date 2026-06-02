@@ -119,9 +119,29 @@ export function BriefWorkspace({
 
   async function handleApproveBrief() {
     if (!brief) return;
-    // Open drawer in template mode — auto-selects template, fills, and generates.
-    setDrawerConceptIds([]);
-    setDrawerOpen(true);
+    setConceptLoading(true);
+    setError(null);
+    setPhase('concepts_loading');
+    try {
+      const res = await fetch('/api/pipeline/concept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ brief_id: brief.id, count: 4 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+
+      setConcepts((data.concepts as Concept[]) ?? []);
+      setSamenessRounds((data.sameness_rounds as SamenessRound[]) ?? []);
+      setSamenessRetries(Number(data.sameness_retries ?? 0));
+      setPhase('concepts_ready');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase('brief_ready');
+    } finally {
+      setConceptLoading(false);
+    }
   }
 
   function handleStartOver() {
@@ -235,11 +255,10 @@ export function BriefWorkspace({
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         concepts={drawerConcepts}
-        briefId={brief?.id}
         aspectRatio={aspectRatio}
         useReferences={useReferences}
         sessionId={session.id}
-        mode="template"
+        mode="direct"
       />
     </div>
   );
