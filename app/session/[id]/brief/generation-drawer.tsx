@@ -213,11 +213,8 @@ export function GenerationDrawer({
     // Skip auto-nav if the template run totally failed (nothing to show).
     if (mode === 'template' && anyFailed) return;
 
-    const timer = setTimeout(() => {
-      router.push(`/session/${sessionId}/results`);
-      onClose();
-    }, 1500); // brief pause so the user sees the done state before leaving
-    return () => clearTimeout(timer);
+    router.push(`/session/${sessionId}/results`);
+    onClose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allDone]);
 
