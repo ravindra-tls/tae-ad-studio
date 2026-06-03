@@ -240,24 +240,50 @@ export function PaintbrushCanvas() {
 
       {/* Paintbrush */}
       <g className="loading-anim-brush" style={{ transformOrigin: '180px 65px' }}>
-        {/* Handle — long tapered */}
+        {/* Handle — long, slightly tapered wooden rod */}
         <path
-          d="M178,10 C176,10 174,12 174,14 L172,52 C172,54 174,56 176,56 L184,56 C186,56 188,54 188,52 L186,14 C186,12 184,10 182,10 Z"
+          d="M177,8 C175,8 173,10 173,13 L172,54 C172,56 174,58 177,58 L183,58 C186,58 188,56 188,54 L187,13 C187,10 185,8 183,8 Z"
           fill="url(#pc-handle)"
-          transform="rotate(20, 180, 35)"
+          transform="rotate(20, 180, 33)"
         />
-        {/* Ferrule */}
-        <rect x="171" y="54" width="18" height="8" rx="1.5" fill="url(#pc-ferrule)" transform="rotate(20, 180, 58)" />
-        {/* Bristles — tapered bunch */}
+        {/* Handle end knob */}
+        <ellipse cx="180" cy="9" rx="5" ry="3.5" fill="#F5ECD7" transform="rotate(20, 180, 9)" />
+        <ellipse cx="179" cy="7.5" rx="2" ry="1.5" fill="#FFF" opacity="0.35" transform="rotate(20, 180, 9)" />
+
+        {/* Ferrule — silver band, slightly wider than handle */}
         <path
-          d="M172,62 L168,78 C168,80 174,82 180,82 C186,82 192,80 192,78 L188,62 Z"
+          d="M171,54 L189,54 L190,63 L170,63 Z"
+          fill="url(#pc-ferrule)"
+          transform="rotate(20, 180, 58)"
+        />
+        {/* Ferrule highlight */}
+        <path
+          d="M173,55 L187,55" stroke="#E8E8E8" strokeWidth="1" opacity="0.6"
+          transform="rotate(20, 180, 58)"
+        />
+
+        {/* Bristles — proper artist brush: widens slightly from ferrule then tapers to a fine point */}
+        <path
+          d="M173,63 C171,70 169,79 170,84 C171,90 175,94 180,94 C185,94 189,90 190,84 C191,79 189,70 187,63 Z"
           fill="url(#pc-bristle)"
-          transform="rotate(20, 180, 72)"
+          transform="rotate(20, 180, 78)"
+        />
+        {/* Bristle texture — fine lines suggesting individual bristles */}
+        <path
+          d="M179,64 C178,71 177,80 178,88"
+          stroke="#7BC4A5" strokeWidth="0.9" strokeLinecap="round" fill="none" opacity="0.45"
+          transform="rotate(20, 180, 78)"
         />
         <path
-          d="M174,65 L172,76 C172,77 176,78 180,78 C184,78 188,77 188,76 L186,65"
-          fill="#2D644E" opacity="0.5"
-          transform="rotate(20, 180, 72)"
+          d="M182,64 C183,71 184,80 183,88"
+          stroke="#4A9E7A" strokeWidth="0.7" strokeLinecap="round" fill="none" opacity="0.3"
+          transform="rotate(20, 180, 78)"
+        />
+        {/* Tip highlight */}
+        <path
+          d="M176,67 C175,72 174,78 175,82"
+          stroke="#A0D8C0" strokeWidth="0.8" strokeLinecap="round" fill="none" opacity="0.4"
+          transform="rotate(20, 180, 78)"
         />
       </g>
 
