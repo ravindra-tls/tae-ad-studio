@@ -22,6 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   X,
   CheckCircle2,
@@ -97,6 +98,7 @@ export function GenerationDrawer({
   briefId,
 }: GenerationDrawerProps) {
   // activeIndex walks through concepts sequentially. -1 = not started yet.
+  const router = useRouter();
   const [activeIndex, setActiveIndex] = useState(-1);
   const [results, setResults] = useState<RunResult[]>([]);
   const { state, start, reset, cancel } = useGenerationStream();
@@ -179,10 +181,9 @@ export function GenerationDrawer({
       ];
     });
 
-    // Advance on completed. Halt the whole run on first failure so the user
-    // can address it rather than burning usage on a broken concept.
-    if (state.status === 'completed' && activeIndex + 1 < concepts.length) {
-      // Give the UI a beat to show the completed state before moving on.
+    // Always advance to the next concept — a single failure should never stop
+    // the rest of the batch. Failures are recorded in results and shown inline.
+    if (activeIndex + 1 < concepts.length) {
       const timer = setTimeout(() => setActiveIndex((i) => i + 1), 600);
       return () => clearTimeout(timer);
     }
@@ -195,9 +196,30 @@ export function GenerationDrawer({
     setActiveIndex(-1);
     setResults([]);
     startedFor.current = null;
+    allDoneRef.current = false;
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Auto-navigate to results once the full batch is done.
+  // In template mode: navigate on success (failures show an error instead).
+  // In concept modes: always navigate — even if some failed, the results page
+  // shows what succeeded and what didn't.
+  const allDoneRef = useRef(false);
+  useEffect(() => {
+    if (!allDone || allDoneRef.current) return;
+    allDoneRef.current = true;
+
+    // Skip auto-nav if the template run totally failed (nothing to show).
+    if (mode === 'template' && anyFailed) return;
+
+    const timer = setTimeout(() => {
+      router.push(`/session/${sessionId}/results`);
+      onClose();
+    }, 1500); // brief pause so the user sees the done state before leaving
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDone]);
 
   const activeConcept = useMemo(
     () => (activeIndex >= 0 && activeIndex < concepts.length ? concepts[activeIndex] : null),
