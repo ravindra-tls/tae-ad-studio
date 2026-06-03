@@ -72,24 +72,29 @@ export async function GET(request: Request) {
   }
 
   // ── Normal paginated mode ────────────────────────────────────────────────
-  const page    = Math.max(1, parseInt(url.searchParams.get('page')  ?? '1'));
-  const limit   = Math.min(96, Math.max(1, parseInt(url.searchParams.get('limit') ?? '48')));
-  const from    = (page - 1) * limit;
-  const to      = from + limit - 1;
+  const page       = Math.max(1, parseInt(url.searchParams.get('page')        ?? '1'));
+  const limit      = Math.min(96, Math.max(1, parseInt(url.searchParams.get('limit') ?? '48')));
+  const templateId = url.searchParams.get('template_id') ?? null;
+  const from       = (page - 1) * limit;
+  const to         = from + limit - 1;
+
+  // Build base query — optionally scoped to a single template
+  const baseQuery = (q: ReturnType<typeof service.from>) => {
+    let chain = q.eq('status', 'completed').not('image_url', 'is', null);
+    if (templateId) chain = chain.eq('template_id', templateId);
+    return chain;
+  };
 
   // Real total count (head-only query — no data transfer)
-  const { count } = await service
-    .from('generated_images')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'completed')
-    .not('image_url', 'is', null);
+  const { count } = await baseQuery(
+    service.from('generated_images').select('id', { count: 'exact', head: true })
+  );
 
   const total = count ?? 0;
 
   // Paginated image rows with joined session → product + profile
-  const { data: rawImages, error } = await service
-    .from('generated_images')
-    .select(`
+  const { data: rawImages, error } = await baseQuery(
+    service.from('generated_images').select(`
       *,
       session:sessions(
         user_id,
@@ -97,8 +102,7 @@ export async function GET(request: Request) {
         profile:profiles(full_name, email)
       )
     `)
-    .eq('status', 'completed')
-    .not('image_url', 'is', null)
+  )
     .order('created_at', { ascending: false })
     .range(from, to);
 

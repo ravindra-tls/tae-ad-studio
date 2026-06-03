@@ -43,6 +43,8 @@ interface GalleryProps {
   totalCount:    number;
   currentUserId: string;
   ratedImageIds: Set<string>;
+  /** When set, pagination only fetches images for this template */
+  templateId?:   string;
 }
 
 // ─── Masonry item type ────────────────────────────────────────────────────────
@@ -51,7 +53,7 @@ type GalleryColItem =
   | { kind: 'image'; img: GalleryImage; colIdx: number };
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export function Gallery({ initialImages, totalCount, currentUserId, ratedImageIds }: GalleryProps) {
+export function Gallery({ initialImages, totalCount, currentUserId, ratedImageIds, templateId }: GalleryProps) {
   // ── Pagination state ────────────────────────────────────────────────────────
   const [allImages,  setAllImages]  = useState<GalleryImage[]>(initialImages);
   const [page,       setPage]       = useState(1);
@@ -112,7 +114,8 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     setIsLoading(true);
     try {
       const nextPage = page + 1;
-      const res  = await fetch(`/api/gallery?page=${nextPage}&limit=48`);
+      const templateParam = templateId ? `&template_id=${templateId}` : '';
+      const res  = await fetch(`/api/gallery?page=${nextPage}&limit=48${templateParam}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to load');
       setAllImages((prev) => {

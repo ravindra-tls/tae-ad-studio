@@ -518,26 +518,17 @@ export function TemplateCard({
           />
         )}
 
-        {/* ── Thumbnail strip ── */}
+        {/* ── Thumbnail strip — navigates to full gallery page ── */}
         {!editing && (
           <div className="mt-4 border-t border-brand-teal/5 pt-3">
             <ThumbnailStrip
               previewImages={previewImages}
               imageCount={imageCount}
-              onOpen={() => setShowGallery(true)}
+              onOpen={() => router.push(`/gallery/template/${template.id}`)}
             />
           </div>
         )}
       </div>
-
-      {/* ── Gallery modal (portal) ── */}
-      {showGallery && (
-        <GalleryModal
-          templateId={template.id}
-          templateName={`#${template.number} · ${template.name}`}
-          onClose={() => setShowGallery(false)}
-        />
-      )}
     </>
   );
 }
