@@ -82,9 +82,14 @@ interface EditPromptModalProps {
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
-function buildEditPrompt(change: string, aspectRatio: string, hasMask: boolean): string {
-  const ratioNote  = `Render the output in ${aspectRatio} aspect ratio.`;
-  const trimmed    = change.trim();
+function buildEditPrompt(
+  change: string,
+  aspectRatio: string,
+  hasMask: boolean,
+  originalPrompt: string,
+): string {
+  const ratioNote = `Render the output in ${aspectRatio} aspect ratio.`;
+  const trimmed   = change.trim();
 
   if (hasMask) {
     if (!trimmed) {
@@ -105,12 +110,11 @@ function buildEditPrompt(change: string, aspectRatio: string, hasMask: boolean):
   }
 
   if (!trimmed) {
-    return (
-      `Create a fresh creative variation of this image. You may freely vary the lighting mood, ` +
-      `color grading, background texture, or atmospheric quality — but keep the product, its ` +
-      `placement, and the overall composition intact. ${ratioNote}`
-    );
+    // No description given — resubmit the original prompt unchanged so the
+    // model generates a natural variation on its own without any editorial nudge.
+    return originalPrompt.trim() || `Regenerate this image. ${ratioNote}`;
   }
+
   return (
     `Make only this change: ${trimmed}. Everything else must stay exactly the same — the product, ` +
     `background, lighting, composition, colors, and all graphic or text elements not mentioned. ${ratioNote}`
@@ -510,7 +514,7 @@ export function EditPromptModal({
           sessionId,
           productId,
           skipAssembly:       true,
-          prompt:             buildEditPrompt(change, aspectRatio, !!compositeMask),
+          prompt:             buildEditPrompt(change, aspectRatio, !!compositeMask, image.prompt_used ?? ''),
           aspectRatio,
           referenceImageUrls: allRefs.length ? allRefs : undefined,
           maskDataUrl:        compositeMask ?? undefined,
@@ -780,7 +784,7 @@ export function EditPromptModal({
         }
       />
       <p className="mt-1.5 text-[10px] text-brand-slate/40">
-        {hasRegions ? 'Auto-filled from regions — edits apply only within selected areas' : 'Leave empty for a creative variation'}
+        {hasRegions ? 'Auto-filled from regions — edits apply only within selected areas' : 'Leave empty to regenerate with the original prompt'}
       </p>
     </div>
   );
