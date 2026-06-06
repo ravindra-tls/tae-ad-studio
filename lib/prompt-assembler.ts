@@ -552,7 +552,7 @@ export function assemblePrompt(
 // ─── aiEnrichPrompt ──────────────────────────────────────────────────────────
 
 // À-ɏ covers Latin Extended A+B (accented chars like é, ü, ñ, etc.)
-const PLACEHOLDER_RE = /\[[A-Z][A-Za-z0-9À-ɏ _/—–\-\+\.',:!?()&]+\]/g;
+const PLACEHOLDER_RE = /\[[A-Za-z][A-Za-z0-9À-ɏ _/—–\-\+\.',:!?()&]+\]/g;
 
 const AI_ENRICH_MODEL =
   process.env.ENRICH_MODEL ?? 'claude-haiku-4-5-20251001';
