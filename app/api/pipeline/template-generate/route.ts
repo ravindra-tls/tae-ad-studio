@@ -173,9 +173,10 @@ export async function POST(request: Request) {
           .select('id, number, name, category, template, default_aspect_ratio')
           .limit(50);
 
-        const templates = (templateRows ?? []) as Pick<PromptTemplate, 'id' | 'number' | 'name' | 'category' | 'template' | 'default_aspect_ratio'>[];
+        type TRow = Pick<PromptTemplate, 'id' | 'number' | 'name' | 'category' | 'template' | 'default_aspect_ratio'>;
+        const templates = (templateRows ?? []) as TRow[];
 
-        let selectedTemplate: typeof templates[number] | null = null;
+        let selectedTemplate: TRow | null = null;
         let selectionResult: { template_id: string; template_name: string; rationale: string } = {
           template_id: '',
           template_name: '',
@@ -258,18 +259,21 @@ Return ONLY valid JSON with no markdown: {"template_id":"...","template_name":".
         if (!selectedTemplate) {
           throw new Error('Template selection failed — no template available');
         }
+        // TypeScript cannot narrow a `let` variable assigned inside an async
+        // callback; alias with a const so the compiler knows the type is TRow.
+        const resolvedTemplate: TRow = selectedTemplate as TRow;
 
         // Emit the template_selected event after stage_complete
         emit({
           type: 'template_selected',
-          template_id: selectedTemplate.id,
-          template_name: selectedTemplate.name,
-          template_category: selectedTemplate.category,
+          template_id: resolvedTemplate.id,
+          template_name: resolvedTemplate.name,
+          template_category: resolvedTemplate.category,
           rationale: selectionResult.rationale,
         });
 
         // Prefer the template's own default_aspect_ratio over the caller's request
-        const effectiveAspectRatio = (selectedTemplate.default_aspect_ratio || requestedAspectRatio) as AspectRatio;
+        const effectiveAspectRatio = (resolvedTemplate.default_aspect_ratio || requestedAspectRatio) as AspectRatio;
 
         // ── Stage 2: fill ─────────────────────────────────────────────────
 
@@ -278,7 +282,7 @@ Return ONLY valid JSON with no markdown: {"template_id":"...","template_name":".
         await runStage(
           'fill',
           async () => {
-            const filled = fillTemplate(selectedTemplate!.template, product);
+            const filled = fillTemplate(resolvedTemplate.template, product);
             const enriched = await aiEnrichPrompt(filled, product);
             finalPrompt = assemblePrompt(product, enriched, effectiveAspectRatio);
             return finalPrompt;
@@ -314,7 +318,7 @@ Return ONLY valid JSON with no markdown: {"template_id":"...","template_name":".
             model_id:     modelId,
             status:       'queued',
             brief_id:     brief.id,
-            template_id:  selectedTemplate.id,
+            template_id:  resolvedTemplate.id,
           })
           .select()
           .single();

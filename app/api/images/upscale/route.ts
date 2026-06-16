@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
   const slug = image_id.slice(0, 8);
   const filename = `tae-ad-${slug}-2x.png`;
 
-  return new NextResponse(upscaled, {
+  return new NextResponse(new Uint8Array(upscaled), {
     status: 200,
     headers: {
       'Content-Type':        'image/png',

@@ -117,7 +117,8 @@ export async function GET(request: Request) {
   }
 
   // Build base query — optionally scoped to a template and/or product
-  const baseQuery = (q: ReturnType<typeof service.from>) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const baseQuery = (q: any) => {
     let chain = q.eq('status', 'completed').not('image_url', 'is', null);
     if (templateId) chain = chain.eq('template_id', templateId);
     if (sessionIds !== null) {

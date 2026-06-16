@@ -23,6 +23,7 @@ import { fillTemplate, aiEnrichPrompt, assemblePrompt } from '@/lib/prompt-assem
 import { imageProvider, getGeneratedFileExtension } from '@/lib/image-providers';
 import { resolveReferenceImages } from '@/lib/storage/reference-images';
 import type { Product, ProductImage } from '@/types';
+import type { AspectRatio } from '@/lib/hooks/use-generation-stream';
 
 // ─── Load image-to-template skill (same skill as admin template generate) ─────
 
@@ -259,7 +260,7 @@ export async function POST(request: Request) {
     // Generate image
     const result = await imageProvider.submitGeneration({
       prompt:             finalPrompt,
-      aspectRatio:        parsed.aspect_ratio,
+      aspectRatio:        parsed.aspect_ratio as AspectRatio,
       referenceImageUrls: refImages.length ? refImages : undefined,
       modelId,
     });
