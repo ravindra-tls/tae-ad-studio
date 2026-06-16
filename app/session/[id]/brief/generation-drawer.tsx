@@ -103,6 +103,22 @@ export function GenerationDrawer({
   const [results, setResults] = useState<RunResult[]>([]);
   const { state, start, reset, cancel } = useGenerationStream();
 
+  // ── Derived state ── declared before any useEffect that references them
+  // to avoid temporal dead zone (const is not hoisted).
+  const allDoneRef = useRef(false);
+
+  const allDone =
+    mode === 'template'
+      ? (state.status === 'completed' || state.status === 'failed')
+      : results.length > 0 &&
+        results.length === concepts.length &&
+        state.status !== 'streaming';
+
+  const anyFailed =
+    mode === 'template'
+      ? state.status === 'failed'
+      : results.some((r) => r.status === 'failed');
+
   // ESC key to close — but only if nothing is streaming (don't kill a run by accident).
   useEffect(() => {
     if (!open) return;
@@ -205,7 +221,6 @@ export function GenerationDrawer({
   // In template mode: navigate on success (failures show an error instead).
   // In concept modes: always navigate — even if some failed, the results page
   // shows what succeeded and what didn't.
-  const allDoneRef = useRef(false);
   useEffect(() => {
     if (!allDone || allDoneRef.current) return;
     allDoneRef.current = true;
@@ -222,18 +237,6 @@ export function GenerationDrawer({
     () => (activeIndex >= 0 && activeIndex < concepts.length ? concepts[activeIndex] : null),
     [activeIndex, concepts],
   );
-
-  const allDone =
-    mode === 'template'
-      ? (state.status === 'completed' || state.status === 'failed')
-      : results.length > 0 &&
-        results.length === concepts.length &&
-        state.status !== 'streaming';
-
-  const anyFailed =
-    mode === 'template'
-      ? state.status === 'failed'
-      : results.some((r) => r.status === 'failed');
 
   if (!open) return null;
 
