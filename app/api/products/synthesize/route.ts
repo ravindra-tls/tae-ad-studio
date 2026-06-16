@@ -14,6 +14,13 @@ export const maxDuration = 120;  // allow up to 2 min for multi-source synthesis
 /** Server-side cap on documents per request — matches the modal's UI cap. */
 const MAX_DOCUMENTS = 3;
 
+/**
+ * Per-image base64 character limit on the server side (~2 MB decoded).
+ * Client-side compression normally keeps images well under this.
+ * This is a last-resort safety net against Anthropic 413 errors.
+ */
+const MAX_IMAGE_BASE64_CHARS = Math.ceil(2 * 1024 * 1024 * (4 / 3)); // ~2.8 M chars
+
 // ─── Schema description sent to Claude ────────────────────────────────────────
 
 const PRODUCT_SCHEMA_PROMPT = `
@@ -288,17 +295,24 @@ export async function POST(request: Request) {
       await Promise.all(otherDocs.map((d) => extractDocumentText(d)))
     ).filter((e): e is ExtractedText => e !== null);
 
-    // 3. Build Claude message content
+    // 3. Guard oversized images (safety net — client should already compress)
+    const safeImages = images.filter((img) => {
+      if (img.data.length <= MAX_IMAGE_BASE64_CHARS) return true;
+      console.warn(`[synthesize] image skipped — base64 length ${img.data.length} exceeds ${MAX_IMAGE_BASE64_CHARS} chars`);
+      return false;
+    });
+
+    // 4. Build Claude message content
     const contentBlocks = buildContentBlocks(
       text,
       urls,
       scrapedTexts,
-      images,
+      safeImages,
       pdfDocs,
       extracted,
     );
 
-    // 4. Call Claude API
+    // 5. Call Claude API
     const anthropic = new Anthropic({ apiKey });
 
     const response = await anthropic.messages.create({
@@ -313,7 +327,7 @@ export async function POST(request: Request) {
       ],
     });
 
-    // 5. Extract JSON from response
+    // 6. Extract JSON from response
     const responseText = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
@@ -326,7 +340,7 @@ export async function POST(request: Request) {
 
     const synthesized = JSON.parse(jsonStr);
 
-    // 6. If editing, fetch existing product for diff
+    // 7. If editing, fetch existing product for diff
     let existingProduct = null;
     if (existingProductId) {
       const { data } = await supabase

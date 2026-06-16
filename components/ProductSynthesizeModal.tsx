@@ -136,6 +136,64 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> 
   });
 }
 
+/**
+ * Compress a product image before sending to the API.
+ * Resizes to max 1568px on the long edge (Anthropic's recommended vision cap)
+ * and re-encodes as JPEG at 0.82 quality.
+ * Typical input: 3–5 MB → output: 150–400 KB.
+ */
+function compressImage(file: File): Promise<{ data: string; mediaType: string }> {
+  const MAX_LONG_EDGE = 1568;
+  const QUALITY = 0.82;
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const blobUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+
+      let { width, height } = img;
+      if (Math.max(width, height) > MAX_LONG_EDGE) {
+        if (width >= height) {
+          height = Math.round((height / width) * MAX_LONG_EDGE);
+          width = MAX_LONG_EDGE;
+        } else {
+          width = Math.round((width / height) * MAX_LONG_EDGE);
+          height = MAX_LONG_EDGE;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas context unavailable')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error('Canvas toBlob failed')); return; }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const [, data] = result.split(',');
+          resolve({ data, mediaType: 'image/jpeg' });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg', QUALITY);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      // Fall back to raw base64 if Canvas fails for any reason
+      fileToBase64(file).then(resolve).catch(reject);
+    };
+
+    img.src = blobUrl;
+  });
+}
+
 let idCounter = 0;
 function uid() { return `img_${Date.now()}_${++idCounter}`; }
 
@@ -283,7 +341,8 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
     const newImages: ImageInput[] = [];
     for (const file of Array.from(files)) {
       if (!file.type.startsWith('image/')) continue;
-      const { data, mediaType } = await fileToBase64(file);
+      // Compress before encoding — avoids Anthropic 413 on large product photos
+      const { data, mediaType } = await compressImage(file);
       newImages.push({
         id: uid(),
         file,
