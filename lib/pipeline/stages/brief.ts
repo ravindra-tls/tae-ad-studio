@@ -27,7 +27,7 @@ import {
 import type { PositioningResearch } from '@/lib/research/types';
 
 /** Model identifier — pinned so eval history is comparable. Bump deliberately. */
-const BRIEF_MODEL = 'claude-sonnet-4-20250514';
+const BRIEF_MODEL = 'claude-sonnet-4-5';
 const BRIEF_MAX_TOKENS = 2048;
 
 export interface BriefStageArgs {

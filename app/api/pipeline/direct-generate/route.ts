@@ -277,7 +277,7 @@ Write the GPT Image-2 prompt now:`;
           async () => {
             const anthropic = new Anthropic();
             const message = await anthropic.messages.create({
-              model: 'claude-sonnet-4-20250514',
+              model: 'claude-sonnet-4-5',
               max_tokens: 1400,
               system: `You are an expert creative director and AI image prompt engineer for Meta performance ads.
 

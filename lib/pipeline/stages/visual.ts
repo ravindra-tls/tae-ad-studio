@@ -24,7 +24,7 @@ import {
 } from '../prompts/visual';
 import { getArchetypeTemplate } from '../templates/archetypes';
 
-const VISUAL_MODEL = 'claude-sonnet-4-20250514';
+const VISUAL_MODEL = 'claude-sonnet-4-5';
 const VISUAL_MAX_TOKENS = 2048;
 
 export interface VisualStageArgs {

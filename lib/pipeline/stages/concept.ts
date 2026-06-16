@@ -31,7 +31,7 @@ import {
 } from '../prompts/concept';
 import { runSamenessChecks, type SamenessRound } from './sameness';
 
-const CONCEPT_MODEL = 'claude-sonnet-4-20250514';
+const CONCEPT_MODEL = 'claude-sonnet-4-5';
 const CONCEPT_MAX_TOKENS = 4096;
 const REPLACEMENT_MAX_TOKENS = 3072;
 

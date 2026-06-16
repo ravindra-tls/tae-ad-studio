@@ -37,7 +37,7 @@ import {
   buildSamenessUserMessage,
 } from '../prompts/concept';
 
-const SAMENESS_MODEL = 'claude-sonnet-4-20250514';
+const SAMENESS_MODEL = 'claude-sonnet-4-5';
 const SAMENESS_MAX_TOKENS = 1024;
 
 /**

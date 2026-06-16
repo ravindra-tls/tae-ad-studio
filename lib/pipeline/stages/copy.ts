@@ -23,7 +23,7 @@ import {
   buildCopyUserMessage,
 } from '../prompts/copy';
 
-const COPY_MODEL = 'claude-sonnet-4-20250514';
+const COPY_MODEL = 'claude-sonnet-4-5';
 const COPY_MAX_TOKENS = 2048;
 
 export interface CopyStageArgs {
