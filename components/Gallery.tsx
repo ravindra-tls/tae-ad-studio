@@ -251,6 +251,28 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     );
   }, []);
 
+  const handleUpscale = useCallback(async (img: GalleryImage) => {
+    const res = await fetch('/api/images/upscale', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ image_id: img.id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `Upscale failed (${res.status})`);
+    }
+    const blob   = await res.blob();
+    const url    = URL.createObjectURL(blob);
+    const slug   = (img.product_name ?? 'ad').toLowerCase().replace(/\s+/g, '-');
+    const a      = document.createElement('a');
+    a.href       = url;
+    a.download   = `tae-${slug}-${img.id.slice(0, 6)}-2x.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
   const TABS: { id: FilterTab; label: string; icon: React.ReactNode }[] = [
     { id: 'all',     label: 'All',     icon: <Images className="h-3.5 w-3.5" /> },
     { id: 'mine',    label: 'By Me',   icon: <User   className="h-3.5 w-3.5" /> },
@@ -432,6 +454,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
                         onStar={() => toggleStar(img.id)}
                         onDownload={() => handleDownload(img)}
                         onOpenLightbox={() => setLightboxIdx(item.colIdx - editEntries.length)}
+                        onUpscale={() => handleUpscale(img)}
                         onEdit={img.session_id && (img as GalleryImage).product_id
                           ? () => setEditingImage(img as unknown as GeneratedImage)
                           : undefined}

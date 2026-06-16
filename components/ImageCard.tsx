@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from 'react';
 import Image from 'next/image';
-import { Download, Star, FileText, Copy, Check, X, Pencil } from 'lucide-react';
+import { Download, Star, FileText, Copy, Check, X, Pencil, Maximize2, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { GeneratedImage } from '@/types';
@@ -31,6 +31,8 @@ interface ImageCardProps {
   onDownload:     () => void;
   onOpenLightbox: () => void;
   onEdit?:        () => void;
+  /** Async — ImageCard shows a spinner while it resolves. */
+  onUpscale?:     () => Promise<void>;
   galleryMeta?:   GalleryMeta;
   /** Hide the "View Prompt" hover button + flip (e.g. dashboard thumbnails) */
   hidePrompt?:    boolean;
@@ -46,12 +48,14 @@ export function ImageCard({
   onDownload,
   onOpenLightbox,
   onEdit,
+  onUpscale,
   galleryMeta,
   hidePrompt = false,
 }: ImageCardProps) {
   const [isBack,    setIsBack]    = useState(false);
   const [animDir,   setAnimDir]   = useState<AnimDir | null>(null);
   const [copied,    setCopied]    = useState(false);
+  const [upscaling, setUpscaling] = useState(false);
 
   const handleFlip = useCallback(() => {
     const dir: AnimDir = isBack ? 'to-front' : 'to-back';
@@ -68,6 +72,17 @@ export function ImageCard({
       setTimeout(() => setCopied(false), 2000);
     });
   }, [image.prompt_used]);
+
+  const handleUpscale = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onUpscale || upscaling) return;
+    setUpscaling(true);
+    try {
+      await onUpscale();
+    } finally {
+      setUpscaling(false);
+    }
+  }, [onUpscale, upscaling]);
 
   const isAnimating = animDir !== null;
   const showingBack = isBack && !isAnimating;
@@ -143,6 +158,20 @@ export function ImageCard({
                     title="Edit prompt & regenerate"
                   >
                     <Pencil className="h-3.5 w-3.5 text-brand-forest" />
+                  </button>
+                )}
+                {onUpscale && (
+                  <button
+                    data-glow=""
+                    onClick={handleUpscale}
+                    disabled={upscaling}
+                    className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150 disabled:opacity-60 disabled:cursor-wait"
+                    title={upscaling ? 'Upscaling…' : 'Upscale 2× & download HD'}
+                  >
+                    {upscaling
+                      ? <Loader2 className="h-3.5 w-3.5 text-brand-teal animate-spin" />
+                      : <Maximize2 className="h-3.5 w-3.5 text-brand-forest" />
+                    }
                   </button>
                 )}
               </div>
