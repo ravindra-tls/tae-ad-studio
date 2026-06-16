@@ -148,13 +148,28 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
   // starred.size is the source of truth — no need to cross-reference allImages
   const starredCount = starred.size;
 
-  const products = useMemo(() => {
+  // ── Product filter list: fetched once from DB (not derived from loaded images)
+  // so all products with images appear even if their images aren't in the first page.
+  const [products, setProducts] = useState<{ id: string; name: string }[]>(() => {
+    // Seed from SSR-loaded images so there's no flash while the fetch resolves.
     const map = new Map<string, string>();
-    allImages.forEach((img) => {
+    initialImages.forEach((img) => {
       if (img.product_id && img.product_name) map.set(img.product_id, img.product_name);
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [allImages]);
+  });
+
+  useEffect(() => {
+    fetch('/api/gallery?products=1')
+      .then((r) => r.json())
+      .then((data: { products?: { id: string; name: string }[] }) => {
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          setProducts(data.products);
+        }
+      })
+      .catch((err) => console.error('[Gallery] products fetch failed:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     // Starred tab uses its own dedicated fetch result — don't mix with allImages

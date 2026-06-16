@@ -71,6 +71,32 @@ export async function GET(request: Request) {
     return NextResponse.json({ images, total: images.length, page: 1, hasMore: false });
   }
 
+  // ── Products mode: distinct products that have at least one completed image ─
+  // ?products=1  →  { products: [{ id, name, sub_brand }] }
+  if (url.searchParams.get('products') === '1') {
+    // Fetch a broad slice of generated_images and deduplicate by product_id in JS.
+    // This avoids needing a raw-SQL RPC just for a small workspace-level list.
+    const { data: rows, error: prodErr } = await service
+      .from('generated_images')
+      .select('session:sessions!inner(product:products!inner(id, name, sub_brand))')
+      .eq('status', 'completed')
+      .not('image_url', 'is', null)
+      .limit(2000);
+
+    if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
+
+    const map = new Map<string, { id: string; name: string; sub_brand: string | null }>();
+    for (const row of rows ?? []) {
+      const p = (row as any).session?.product;
+      if (p?.id && !map.has(p.id)) {
+        map.set(p.id, { id: p.id, name: p.name ?? '', sub_brand: p.sub_brand ?? null });
+      }
+    }
+
+    const products = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return NextResponse.json({ products });
+  }
+
   // ── Normal paginated mode ────────────────────────────────────────────────
   const page       = Math.max(1, parseInt(url.searchParams.get('page')        ?? '1'));
   const limit      = Math.min(96, Math.max(1, parseInt(url.searchParams.get('limit') ?? '48')));
