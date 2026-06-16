@@ -108,14 +108,49 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
       .finally(() => { setStarredLoading(false); });
   }, [activeTab, starred]);
 
+  // ── When product filter changes: reset and reload from server ────────────
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    // Skip on first render — initialImages already SSR-loaded for 'all'.
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+
+    const productParam  = productFilter !== 'all' ? `&product_id=${productFilter}` : '';
+    const templateParam = templateId ? `&template_id=${templateId}` : '';
+
+    if (productFilter === 'all') {
+      // Restore SSR data and let infinite scroll take over again.
+      setAllImages(initialImages);
+      setPage(1);
+      setHasMore(initialImages.length < totalCount);
+      return;
+    }
+
+    setAllImages([]);
+    setPage(1);
+    setHasMore(false);
+    setIsLoading(true);
+
+    fetch(`/api/gallery?page=1&limit=48${productParam}${templateParam}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setAllImages(data.images ?? []);
+        setPage(1);
+        setHasMore(data.hasMore ?? false);
+      })
+      .catch((err) => console.error('[Gallery] product filter fetch failed:', err))
+      .finally(() => setIsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productFilter]);
+
   // ── Infinite scroll: load next page ──────────────────────────────────────
   const loadMore = useCallback(async () => {
     if (isLoading || !hasMore) return;
     setIsLoading(true);
     try {
-      const nextPage = page + 1;
+      const nextPage      = page + 1;
       const templateParam = templateId ? `&template_id=${templateId}` : '';
-      const res  = await fetch(`/api/gallery?page=${nextPage}&limit=48${templateParam}`);
+      const productParam  = productFilter !== 'all' ? `&product_id=${productFilter}` : '';
+      const res  = await fetch(`/api/gallery?page=${nextPage}&limit=48${templateParam}${productParam}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to load');
       setAllImages((prev) => {
@@ -130,7 +165,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, hasMore, page]);
+  }, [isLoading, hasMore, page, productFilter]);
 
   // ── IntersectionObserver sentinel at bottom of grid ──────────────────────
   useEffect(() => {
@@ -172,11 +207,11 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
   }, []);
 
   const filtered = useMemo(() => {
-    // Starred tab uses its own dedicated fetch result — don't mix with allImages
+    // Starred tab uses its own dedicated fetch result — don't mix with allImages.
+    // Product filter is server-side (allImages is already scoped) — only "mine" is client-side.
     const source = activeTab === 'starred' ? starredImages : allImages;
     return source.filter((img) => {
       if (activeTab === 'mine' && img.creator_user_id !== currentUserId) return false;
-      if (productFilter !== 'all' && img.product_id !== productFilter)   return false;
       return true;
     });
   }, [allImages, starredImages, activeTab, productFilter, currentUserId]);

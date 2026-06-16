@@ -101,13 +101,31 @@ export async function GET(request: Request) {
   const page       = Math.max(1, parseInt(url.searchParams.get('page')        ?? '1'));
   const limit      = Math.min(96, Math.max(1, parseInt(url.searchParams.get('limit') ?? '48')));
   const templateId = url.searchParams.get('template_id') ?? null;
+  const productId  = url.searchParams.get('product_id')  ?? null;
   const from       = (page - 1) * limit;
   const to         = from + limit - 1;
 
-  // Build base query — optionally scoped to a single template
+  // If filtering by product, resolve session IDs for that product first.
+  // (product_id lives on sessions, not on generated_images directly.)
+  let sessionIds: string[] | null = null;
+  if (productId) {
+    const { data: sessionRows } = await service
+      .from('sessions')
+      .select('id')
+      .eq('product_id', productId);
+    sessionIds = (sessionRows ?? []).map((s: any) => s.id as string);
+  }
+
+  // Build base query — optionally scoped to a template and/or product
   const baseQuery = (q: ReturnType<typeof service.from>) => {
     let chain = q.eq('status', 'completed').not('image_url', 'is', null);
     if (templateId) chain = chain.eq('template_id', templateId);
+    if (sessionIds !== null) {
+      // Empty session list → guaranteed no results (avoids full-table scan)
+      chain = sessionIds.length > 0
+        ? chain.in('session_id', sessionIds)
+        : chain.in('session_id', ['00000000-0000-0000-0000-000000000000']);
+    }
     return chain;
   };
 
