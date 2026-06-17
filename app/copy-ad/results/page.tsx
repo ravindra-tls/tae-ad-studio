@@ -32,8 +32,23 @@ export default async function CopyAdResultsPage({
 
   if (!sessions?.length) redirect('/dashboard');
 
-  // Reference image from any session (they all share the same one)
-  const referenceImageUrl = (sessions[0] as any).reference_image_url as string | null;
+  // Group sessions by their reference image URL.
+  // Multi-reference batches will have different reference_image_url per session.
+  type SessionRow = NonNullable<typeof sessions>[number];
+  const refGroupMap = new Map<string, SessionRow[]>();
+  for (const s of sessions) {
+    const key = ((s as any).reference_image_url as string | null) ?? '';
+    if (!refGroupMap.has(key)) refGroupMap.set(key, []);
+    refGroupMap.get(key)!.push(s);
+  }
+  const refGroups = Array.from(refGroupMap.entries()).map(([refUrl, grpSessions]) => ({
+    refUrl: refUrl || null,
+    sessions: grpSessions,
+  }));
+  const isMultiRef = refGroups.length > 1;
+
+  // Backwards-compat: single reference URL for header display
+  const referenceImageUrl = refGroups[0]?.refUrl ?? null;
 
   // Fetch generated images for all sessions
   const sessionIds = sessions.map((s) => s.id);
@@ -75,18 +90,33 @@ export default async function CopyAdResultsPage({
         <SubmitAsTemplateButton groupId={groupId} />
       </div>
 
-      {/* ── Reference image ── */}
-      {referenceImageUrl && (
+      {/* ── Reference image(s) header ── */}
+      {isMultiRef ? (
+        /* Multi-reference: compact strip showing all refs */
+        <div className="mb-8 rounded-2xl border border-brand-forest/10 bg-brand-cream/30 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand-slate mb-3">
+            Reference Ads Used ({refGroups.length})
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {refGroups.map((g, i) => g.refUrl && (
+              <div key={i} className="flex items-center gap-2">
+                <div className="relative h-14 w-14 shrink-0 rounded-lg overflow-hidden border border-brand-forest/10 bg-white">
+                  <Image src={g.refUrl} alt={`Reference ${i + 1}`} fill className="object-contain" />
+                </div>
+                <span className="text-[11px] text-brand-slate">
+                  Ref {i + 1} · {g.sessions.length} product{g.sessions.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : referenceImageUrl ? (
+        /* Single reference: original expanded layout */
         <div className="mb-8 rounded-2xl border border-brand-forest/10 bg-brand-cream/30 p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-slate mb-3">Reference Ad Used</p>
           <div className="flex items-start gap-4">
             <div className="relative h-36 w-36 shrink-0 rounded-xl overflow-hidden border border-brand-forest/10 bg-white">
-              <Image
-                src={referenceImageUrl}
-                alt="Reference ad"
-                fill
-                className="object-contain"
-              />
+              <Image src={referenceImageUrl} alt="Reference ad" fill className="object-contain" />
             </div>
             <div className="pt-1">
               <p className="text-sm font-medium text-brand-forest mb-1">
@@ -98,7 +128,7 @@ export default async function CopyAdResultsPage({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* ── Refresh notice if still generating ── */}
       {!allDone && (
@@ -108,7 +138,82 @@ export default async function CopyAdResultsPage({
         </div>
       )}
 
-      {/* ── Results grid ── */}
+      {/* ── Results grid (grouped by reference when multi-ref) ── */}
+      {isMultiRef ? (
+        /* Multi-reference: one section per reference */
+        <div className="space-y-10">
+          {refGroups.map((group, gIdx) => (
+            <div key={gIdx}>
+              {/* Section header */}
+              <div className="flex items-center gap-3 mb-4">
+                {group.refUrl && (
+                  <div className="relative h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-brand-forest/10">
+                    <Image src={group.refUrl} alt={`Reference ${gIdx + 1}`} fill className="object-cover" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-semibold text-brand-forest">Reference {gIdx + 1}</p>
+                  <p className="text-xs text-brand-slate">{group.sessions.length} product{group.sessions.length !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {group.sessions.map((session: any) => {
+                  const img     = imageBySession.get(session.id);
+                  const product = session.product;
+                  const done    = img?.status === 'completed';
+                  const failed  = img?.status === 'failed';
+                  return (
+                    <div key={session.id} className="rounded-2xl border border-brand-forest/10 overflow-hidden bg-white shadow-sm">
+                      <div className="relative aspect-square bg-brand-cream/50">
+                        {done && img.image_url ? (
+                          <Image src={img.image_url} alt={product?.name || 'Generated ad'} fill className="object-cover" />
+                        ) : failed ? (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">
+                            <XCircle className="h-8 w-8 text-brand-wine/60" />
+                            <p className="text-xs text-brand-slate">Generation failed</p>
+                            <p className="text-[11px] text-brand-slate/60">{img?.error_message || 'Unknown error'}</p>
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                            <Loader2 className="h-8 w-8 text-brand-forest/40 animate-spin" />
+                            <p className="text-xs text-brand-slate">Generating…</p>
+                          </div>
+                        )}
+                        {done && <div className="absolute top-2 right-2"><CheckCircle2 className="h-5 w-5 text-green-500 drop-shadow" /></div>}
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          {product?.thumbnail_url && (
+                            <div className="relative h-6 w-6 shrink-0 rounded overflow-hidden border border-brand-forest/10">
+                              <Image src={product.thumbnail_url} alt="" fill className="object-cover" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-brand-forest truncate">{product?.name || 'Unknown product'}</p>
+                            <p className="text-[11px] text-brand-slate truncate">{product?.sub_brand || product?.brand}</p>
+                          </div>
+                        </div>
+                        {img && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge variant="secondary" className={cn('text-[10px]', done ? 'bg-green-50 text-green-700' : failed ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700')}>
+                              {done ? 'Ready' : failed ? 'Failed' : 'Generating'}
+                            </Badge>
+                            {img.aspect_ratio && <span className="text-[10px] text-brand-slate">{img.aspect_ratio}</span>}
+                          </div>
+                        )}
+                        <Link href={`/session/${session.id}/results`} className="mt-3 flex items-center gap-1 text-[11px] text-brand-teal hover:underline">
+                          Open in gallery <ExternalLink className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      /* Single reference: original flat grid */
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {sessions.map((session: any) => {
           const img   = imageBySession.get(session.id);
@@ -200,6 +305,7 @@ export default async function CopyAdResultsPage({
           );
         })}
       </div>
+      )} {/* end single/multi-ref conditional */}
     </div>
   );
 }

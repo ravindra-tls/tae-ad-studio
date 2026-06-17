@@ -100,19 +100,34 @@ export async function POST(request: Request) {
 
   // ── Parse body ──
   const body = await request.json() as {
-    imageBase64: string;
-    mimeType: string;
+    imageBase64?: string;
+    mimeType?: string;
+    references?: Array<{ imageBase64: string; mimeType: string }>;
     productIds: string[];
   };
 
-  const { imageBase64, mimeType, productIds } = body;
+  const { productIds } = body;
 
-  if (!imageBase64)        return NextResponse.json({ error: 'Missing reference image' }, { status: 400 });
-  if (!productIds?.length) return NextResponse.json({ error: 'Select at least one product' }, { status: 400 });
+  // Normalise: support both legacy single-image and new multi-image formats
+  const refArray: Array<{ imageBase64: string; mimeType: string }> =
+    Array.isArray(body.references) && body.references.length > 0
+      ? body.references
+      : body.imageBase64
+        ? [{ imageBase64: body.imageBase64, mimeType: body.mimeType ?? 'image/jpeg' }]
+        : [];
 
-  if (profile.usage_count + productIds.length > profile.usage_cap) {
+  if (refArray.length === 0) return NextResponse.json({ error: 'Missing reference image' }, { status: 400 });
+  if (refArray.length > 5)   return NextResponse.json({ error: 'Maximum 5 reference images allowed' }, { status: 400 });
+  if (!productIds?.length)   return NextResponse.json({ error: 'Select at least one product' }, { status: 400 });
+
+  const totalGenerations = refArray.length * productIds.length;
+  if (profile.usage_count + totalGenerations > profile.usage_cap) {
     return NextResponse.json(
-      { error: `Not enough credits. Need ${productIds.length}, have ${profile.usage_cap - profile.usage_count}.` },
+      {
+        error: `Not enough credits. Need ${totalGenerations}` +
+          (refArray.length > 1 ? ` (${refArray.length} refs × ${productIds.length} products)` : '') +
+          `, have ${profile.usage_cap - profile.usage_count}.`,
+      },
       { status: 429 },
     );
   }
@@ -121,64 +136,77 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Template skill not loaded' }, { status: 500 });
   }
 
-  // ── 1. Extract template from reference image using Claude ──
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const groupId   = crypto.randomUUID();
 
-  const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
-  const mediaType = ((mimeType || 'image/jpeg').split(';')[0]) as
-    'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  // ── 1 + 2. For each reference: upload image + extract template (sequential
+  //           to stay under Claude rate limits; each call is fast ~2–4 s) ──
 
-  let raw: string;
-  try {
-    const response = await anthropic.messages.create({
-      model:      'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system:     SKILL_CONTENT + OUTPUT_INSTRUCTION,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
-          { type: 'text', text: 'Extract a reusable ad template from this reference ad image.' },
-        ],
-      }],
-    });
-    raw = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '';
-  } catch (err: any) {
-    console.error('[copy-ad] Template extraction error:', err.message);
-    // Surface a clean, user-readable message
-    const msg: string = err.message ?? '';
-    const friendlyError =
-      msg.includes('usage limits') || msg.includes('rate_limit') || msg.includes('429')
-        ? 'AI service usage limit reached. Please try again after your billing period resets.'
-        : msg.includes('401') || msg.includes('authentication')
-        ? 'AI service authentication error. Check the ANTHROPIC_API_KEY environment variable.'
-        : 'AI service unavailable. Please try again in a moment.';
-    return NextResponse.json({ error: friendlyError }, { status: 500 });
-  }
+  interface RefResult { template: ParsedTemplate; referenceImageUrl: string | null; }
 
-  const parsed = parseSkillOutput(raw);
-  if (!parsed) {
-    console.error('[copy-ad] Failed to parse skill output:', raw.slice(0, 500));
-    return NextResponse.json({ error: 'Could not parse template from reference image. Try a clearer ad image.' }, { status: 422 });
-  }
+  const refResults: RefResult[] = [];
 
-  // ── 2. Upload reference image to storage ──
-  const groupId = crypto.randomUUID();
-  const imageBytes = Buffer.from(base64Data, 'base64');
-  const fileExt = mimeType?.includes('png') ? 'png' : mimeType?.includes('webp') ? 'webp' : 'jpg';
-  const refPath = `copy-ad/${groupId}/reference.${fileExt}`;
+  for (let idx = 0; idx < refArray.length; idx++) {
+    const ref       = refArray[idx];
+    const base64Data = ref.imageBase64.includes(',') ? ref.imageBase64.split(',')[1] : ref.imageBase64;
+    const mediaType  = ((ref.mimeType || 'image/jpeg').split(';')[0]) as
+      'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 
-  const { error: refUpErr } = await service.storage
-    .from('generated-images')
-    .upload(refPath, imageBytes, { contentType: mediaType, upsert: true });
+    // Upload reference image to storage
+    const imageBytes = Buffer.from(base64Data, 'base64');
+    const fileExt    = ref.mimeType?.includes('png') ? 'png' : ref.mimeType?.includes('webp') ? 'webp' : 'jpg';
+    const refPath    = `copy-ad/${groupId}/reference-${idx}.${fileExt}`;
 
-  let referenceImageUrl: string | null = null;
-  if (!refUpErr) {
-    const { data: pub } = service.storage.from('generated-images').getPublicUrl(refPath);
-    referenceImageUrl = pub.publicUrl;
-  } else {
-    console.warn('[copy-ad] Reference image upload failed:', refUpErr.message);
-    // Continue anyway — image will still generate without storage URL
+    let referenceImageUrl: string | null = null;
+    const { error: refUpErr } = await service.storage
+      .from('generated-images')
+      .upload(refPath, imageBytes, { contentType: mediaType, upsert: true });
+
+    if (!refUpErr) {
+      const { data: pub } = service.storage.from('generated-images').getPublicUrl(refPath);
+      referenceImageUrl = pub.publicUrl;
+    } else {
+      console.warn(`[copy-ad] Reference ${idx} upload failed:`, refUpErr.message);
+    }
+
+    // Extract template via Claude
+    let raw: string;
+    try {
+      const response = await anthropic.messages.create({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system:     SKILL_CONTENT + OUTPUT_INSTRUCTION,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+            { type: 'text', text: 'Extract a reusable ad template from this reference ad image.' },
+          ],
+        }],
+      });
+      raw = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '';
+    } catch (err: any) {
+      console.error(`[copy-ad] Template extraction error (ref ${idx}):`, err.message);
+      const msg: string = err.message ?? '';
+      const friendlyError =
+        msg.includes('usage limits') || msg.includes('rate_limit') || msg.includes('429')
+          ? 'AI service usage limit reached. Please try again after your billing period resets.'
+          : msg.includes('401') || msg.includes('authentication')
+          ? 'AI service authentication error. Check the ANTHROPIC_API_KEY environment variable.'
+          : `AI service unavailable while processing reference ${idx + 1}. Please try again.`;
+      return NextResponse.json({ error: friendlyError }, { status: 500 });
+    }
+
+    const tmpl = parseSkillOutput(raw);
+    if (!tmpl) {
+      console.error(`[copy-ad] Failed to parse skill output for ref ${idx}:`, raw.slice(0, 300));
+      return NextResponse.json(
+        { error: `Could not extract a template from reference image ${idx + 1}. Try a clearer ad image.` },
+        { status: 422 },
+      );
+    }
+
+    refResults.push({ template: tmpl, referenceImageUrl });
   }
 
   // ── 3. Fetch products ──
@@ -204,9 +232,9 @@ export async function POST(request: Request) {
                                   (process.env.OPENAI_MODEL_ID     || 'gpt-image-2');
   const apiProvider = activeProvider === 'vertex' ? 'vertex-ai' : activeProvider;
 
-  // ── 5. Generate one image per product ──
+  // ── 5. Generate one image per (reference × product) pair ──
 
-  const generateOne = async (product: Product) => {
+  const generateOne = async (product: Product, tmpl: ParsedTemplate, refUrl: string | null) => {
     // Create session with copy_ad metadata
     const sessionName = `${product.name} — Copy Ad · ${new Date().toLocaleDateString()}`;
     const { data: session, error: sessErr } = await service
@@ -216,7 +244,7 @@ export async function POST(request: Request) {
         product_id:          product.id,
         name:                sessionName,
         source:              'copy_ad',
-        reference_image_url: referenceImageUrl,
+        reference_image_url: refUrl,
         copy_ad_group_id:    groupId,
       })
       .select('id')
@@ -227,14 +255,14 @@ export async function POST(request: Request) {
     }
 
     // Fill + enrich + assemble prompt
-    const filled      = fillTemplate(parsed.template, product);
+    const filled      = fillTemplate(tmpl.template, product);
     const enriched    = await aiEnrichPrompt(filled, product);
-    const finalPrompt = assemblePrompt(product, enriched, parsed.aspect_ratio);
+    const finalPrompt = assemblePrompt(product, enriched, tmpl.aspect_ratio);
 
     // Product reference images
     const rawImages = ((product as any).product_images ?? []) as ProductImage[];
     const resolved  = await resolveReferenceImages(rawImages);
-    const refImages: string[] = [
+    const productRefImages: string[] = [
       ...resolved.map((img: any) => img.resolved_url),
       ...(product.thumbnail_url ? [product.thumbnail_url] : []),
     ].slice(0, 4);
@@ -245,7 +273,7 @@ export async function POST(request: Request) {
       .insert({
         session_id:   session.id,
         prompt_used:  finalPrompt,
-        aspect_ratio: parsed.aspect_ratio,
+        aspect_ratio: tmpl.aspect_ratio,
         api_provider: apiProvider,
         model_id:     modelId,
         status:       'queued',
@@ -260,8 +288,8 @@ export async function POST(request: Request) {
     // Generate image
     const result = await imageProvider.submitGeneration({
       prompt:             finalPrompt,
-      aspectRatio:        parsed.aspect_ratio as AspectRatio,
-      referenceImageUrls: refImages.length ? refImages : undefined,
+      aspectRatio:        tmpl.aspect_ratio as AspectRatio,
+      referenceImageUrls: productRefImages.length ? productRefImages : undefined,
       modelId,
     });
 
@@ -303,7 +331,11 @@ export async function POST(request: Request) {
     throw new Error(result.error ?? `Generation status: ${result.status}`);
   };
 
-  const settled = await Promise.allSettled(orderedProducts.map(generateOne));
+  // Dispatch all (reference × product) combos in parallel
+  const allTasks = refResults.flatMap(({ template, referenceImageUrl: refUrl }) =>
+    orderedProducts.map((product) => generateOne(product, template, refUrl))
+  );
+  const settled = await Promise.allSettled(allTasks);
 
   // ── 6. Increment usage count for each product attempted ──
   const attemptCount = settled.length;
@@ -317,19 +349,21 @@ export async function POST(request: Request) {
     productName: string; productId: string;
   };
 
+  // Build task→product mapping for error labels (tasks are ref-major order)
+  const taskProducts = refResults.flatMap(() => orderedProducts);
+
   const sessions: (SessionResult | { error: string; productName: string })[] =
     settled.map((r, i) =>
       r.status === 'fulfilled'
         ? r.value
         : {
             error:       (r.reason as Error)?.message ?? 'Generation failed',
-            productName: orderedProducts[i]?.name ?? `Product ${i + 1}`,
+            productName: taskProducts[i]?.name ?? `Product ${i + 1}`,
           },
     );
 
   const anySucceeded = sessions.some((s) => !('error' in s));
   if (!anySucceeded) {
-    // Surface the first individual error so the UI can show something meaningful
     const firstError = (sessions.find((s) => 'error' in s) as any)?.error ?? 'All generations failed';
     console.error('[copy-ad] All generations failed. First error:', firstError);
     return NextResponse.json({ error: firstError, sessions }, { status: 500 });
@@ -337,10 +371,11 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     groupId,
-    referenceImageUrl,
+    referenceImageUrl:  refResults[0]?.referenceImageUrl ?? null,
+    referenceImageUrls: refResults.map(r => r.referenceImageUrl),
     sessions,
-    templateName:     parsed.name,
-    templateCategory: parsed.category,
-    templateText:     parsed.template,
+    templateName:     refResults[0]?.template.name ?? '',
+    templateCategory: refResults[0]?.template.category ?? '',
+    templateText:     refResults[0]?.template.template ?? '',
   });
 }

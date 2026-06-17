@@ -233,17 +233,19 @@ interface CopyAdModalProps {
   onClose: () => void;
 }
 
+interface RefImage { dataUrl: string; mime: string; name: string; }
+
+const MAX_REFS = 5;
+
 function CopyAdModal({ products, onClose }: CopyAdModalProps) {
   const router = useRouter();
 
-  const [step, setStep]           = useState<ModalStep>('upload');
-  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [imageMime, setImageMime] = useState<string>('image/jpeg');
-  const [imageName, setImageName] = useState<string>('');
+  const [step, setStep]             = useState<ModalStep>('upload');
+  const [refImages, setRefImages]   = useState<RefImage[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [search, setSearch]       = useState('');
+  const [search, setSearch]         = useState('');
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0]);
-  const [errorMsg, setErrorMsg]   = useState('');
+  const [errorMsg, setErrorMsg]     = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const loadingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -268,7 +270,7 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [step, onClose]);
 
-  // Image compression (same as product-selector)
+  // Image compression
   const MAX_EDGE_PX = 1280;
   const compressToDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -295,18 +297,26 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
       reader.readAsDataURL(file);
     });
 
-  const handleFileSelect = async (file: File) => {
+  const handleFilesAdd = async (files: File[]) => {
+    const remaining = MAX_REFS - refImages.length;
+    const toAdd = files.slice(0, remaining);
+    if (!toAdd.length) return;
     try {
-      const dataUrl = await compressToDataUrl(file);
-      setImageDataUrl(dataUrl);
-      setImageMime('image/jpeg');
-      setImageName(file.name);
-      setStep('select');
+      const compressed = await Promise.all(
+        toAdd.map(async (file) => ({
+          dataUrl: await compressToDataUrl(file),
+          mime:    'image/jpeg' as string,
+          name:    file.name,
+        }))
+      );
+      setRefImages(prev => [...prev, ...compressed].slice(0, MAX_REFS));
     } catch {
       setErrorMsg('Could not process image. Try a different file.');
       setStep('error');
     }
   };
+
+  const removeRef = (idx: number) => setRefImages(prev => prev.filter((_, i) => i !== idx));
 
   const toggleProduct = (id: string) => {
     setSelectedIds((prev) => {
@@ -316,17 +326,18 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
     });
   };
 
+  const totalAds = refImages.length * selectedIds.size;
+
   const handleGenerate = useCallback(async () => {
-    if (!imageDataUrl || selectedIds.size === 0) return;
+    if (!refImages.length || selectedIds.size === 0) return;
     setStep('loading');
 
     try {
       const res = await fetch('/api/copy-ad', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: imageDataUrl,
-          mimeType:    imageMime,
+          references:  refImages.map(r => ({ imageBase64: r.dataUrl, mimeType: r.mime })),
           productIds:  Array.from(selectedIds),
         }),
       });
@@ -339,15 +350,14 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
         return;
       }
 
-      // Store template proposal data in sessionStorage for results page
       if (data.groupId) {
         try {
           sessionStorage.setItem(
             `copy_ad_proposal_${data.groupId}`,
             JSON.stringify({
-              templateText:     data.templateText,
-              templateName:     data.templateName,
-              templateCategory: data.templateCategory,
+              templateText:      data.templateText,
+              templateName:      data.templateName,
+              templateCategory:  data.templateCategory,
               referenceImageUrl: data.referenceImageUrl,
             }),
           );
@@ -359,7 +369,7 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
       setErrorMsg('Something went wrong. Please try again.');
       setStep('error');
     }
-  }, [imageDataUrl, imageMime, selectedIds, router]);
+  }, [refImages, selectedIds, router]);
 
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -387,11 +397,11 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
 
         {/* ── STEP: Upload ── */}
         {step === 'upload' && (
-          <div className="p-8 flex flex-col items-center text-center gap-6">
+          <div className="p-7 flex flex-col gap-5">
             <div>
-              <h2 className="text-xl font-bold text-brand-forest mb-1">Upload a Reference Ad</h2>
+              <h2 className="text-xl font-bold text-brand-forest mb-1">Upload Reference Ads</h2>
               <p className="text-sm text-brand-slate">
-                Upload any ad image. AI will extract the creative pattern and apply it to your products.
+                Add up to {MAX_REFS} reference ads. Each will be analysed separately and adapted for your selected products.
               </p>
             </div>
 
@@ -399,32 +409,72 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
               ref={fileRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+              onChange={(e) => e.target.files && handleFilesAdd(Array.from(e.target.files))}
             />
 
-            <button
-              onClick={() => fileRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const file = e.dataTransfer.files[0];
-                if (file) handleFileSelect(file);
-              }}
-              className={cn(
-                'w-full border-2 border-dashed border-brand-forest/20 rounded-xl',
-                'flex flex-col items-center gap-3 p-10 cursor-pointer',
-                'hover:border-brand-forest/40 hover:bg-brand-cream/30 transition-all duration-200',
-              )}
-            >
-              <div className="h-12 w-12 rounded-full bg-brand-forest/10 flex items-center justify-center">
-                <ImagePlus className="h-6 w-6 text-brand-forest" />
+            {/* Drop zone — shrinks once images are added */}
+            {refImages.length < MAX_REFS && (
+              <button
+                onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleFilesAdd(Array.from(e.dataTransfer.files));
+                }}
+                className={cn(
+                  'w-full border-2 border-dashed border-brand-forest/20 rounded-xl',
+                  'flex flex-col items-center gap-3 cursor-pointer',
+                  refImages.length === 0 ? 'p-10' : 'p-5',
+                  'hover:border-brand-forest/40 hover:bg-brand-cream/30 transition-all duration-200',
+                )}
+              >
+                <div className="h-11 w-11 rounded-full bg-brand-forest/10 flex items-center justify-center">
+                  <ImagePlus className="h-5 w-5 text-brand-forest" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-brand-forest">
+                    {refImages.length === 0
+                      ? 'Click to upload or drag & drop'
+                      : `Add more (${MAX_REFS - refImages.length} slot${MAX_REFS - refImages.length !== 1 ? 's' : ''} left)`}
+                  </p>
+                  {refImages.length === 0 && (
+                    <p className="text-xs text-brand-slate mt-0.5">PNG, JPG, WEBP · up to {MAX_REFS} images</p>
+                  )}
+                </div>
+              </button>
+            )}
+
+            {/* Thumbnail grid */}
+            {refImages.length > 0 && (
+              <div className="grid grid-cols-5 gap-2">
+                {refImages.map((ref, i) => (
+                  <div key={i} className="relative group">
+                    <div className="relative aspect-square rounded-lg overflow-hidden border border-brand-forest/10 bg-brand-cream/30">
+                      <img src={ref.dataUrl} alt={ref.name} className="h-full w-full object-cover" />
+                      {/* Overlay label */}
+                      <div className="absolute bottom-0 inset-x-0 bg-brand-forest/60 text-white text-[9px] text-center py-0.5 truncate px-1">
+                        {i + 1}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeRef(i)}
+                      className="absolute -top-1.5 -right-1.5 h-[18px] w-[18px] rounded-full bg-brand-wine text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-sm font-medium text-brand-forest">Click to upload or drag & drop</p>
-                <p className="text-xs text-brand-slate mt-0.5">PNG, JPG, WEBP — any ad format</p>
-              </div>
-            </button>
+            )}
+
+            {refImages.length > 0 && (
+              <Button className="w-full" onClick={() => setStep('select')}>
+                Continue with {refImages.length} reference{refImages.length !== 1 ? 's' : ''}
+                <ChevronRight className="ml-1.5 h-4 w-4" />
+              </Button>
+            )}
           </div>
         )}
 
@@ -440,24 +490,29 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
                 )}
               </p>
 
-              {/* Reference image preview */}
-              {imageDataUrl && (
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="relative h-14 w-14 rounded-lg overflow-hidden border border-brand-forest/10 shrink-0">
-                    <img src={imageDataUrl} alt="Reference" className="h-full w-full object-cover" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-brand-forest truncate">Reference ad</p>
-                    <p className="text-[11px] text-brand-slate truncate">{imageName}</p>
-                    <button
-                      onClick={() => { setImageDataUrl(null); setStep('upload'); }}
-                      className="text-[11px] text-brand-wine hover:underline mt-0.5"
+              {/* Reference images strip */}
+              <div className="mt-3 flex items-center gap-2">
+                <div className="flex gap-1.5 flex-1 overflow-x-auto pb-0.5">
+                  {refImages.map((ref, i) => (
+                    <div
+                      key={i}
+                      className="relative h-12 w-12 shrink-0 rounded-lg overflow-hidden border border-brand-forest/10"
+                      title={ref.name}
                     >
-                      Change image
-                    </button>
-                  </div>
+                      <img src={ref.dataUrl} alt={ref.name} className="h-full w-full object-cover" />
+                      <div className="absolute bottom-0 inset-x-0 bg-brand-forest/60 text-white text-[9px] text-center py-px">
+                        {i + 1}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
+                <button
+                  onClick={() => setStep('upload')}
+                  className="text-[11px] text-brand-wine hover:underline shrink-0"
+                >
+                  Edit
+                </button>
+              </div>
 
               {/* Search */}
               <div className="relative mt-3">
@@ -517,11 +572,11 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
                 disabled={selectedIds.size === 0}
                 onClick={handleGenerate}
               >
-                Generate {selectedIds.size > 0 ? `${selectedIds.size} ` : ''}Ad{selectedIds.size !== 1 ? 's' : ''}
+                Generate {totalAds > 0 ? `${totalAds} ` : ''}Ad{totalAds !== 1 ? 's' : ''}
                 <ChevronRight className="ml-1.5 h-4 w-4" />
               </Button>
               <p className="text-[11px] text-brand-slate text-center mt-2">
-                Uses {selectedIds.size} credit{selectedIds.size !== 1 ? 's' : ''} · One image per product
+                {refImages.length} ref{refImages.length !== 1 ? 's' : ''} × {selectedIds.size || '?'} product{selectedIds.size !== 1 ? 's' : ''} = {totalAds || '?'} credit{totalAds !== 1 ? 's' : ''}
               </p>
             </div>
           </>
@@ -530,7 +585,6 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
         {/* ── STEP: Loading ── */}
         {step === 'loading' && (
           <div className="p-10 flex flex-col items-center text-center gap-6">
-            {/* Animated gradient orb */}
             <div className="relative h-20 w-20">
               <div
                 className="absolute inset-0 rounded-full animate-ping opacity-20"
@@ -550,7 +604,7 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
             </div>
 
             <p className="text-xs text-brand-slate/60">
-              This takes about 1–2 minutes. Please don't close this window.
+              This takes about {refImages.length > 1 ? '2–5' : '1–2'} minutes. Please don't close this window.
             </p>
           </div>
         )}
