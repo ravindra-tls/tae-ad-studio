@@ -2,6 +2,11 @@ export interface GenerateParams {
   prompt: string;
   referenceImageUrls?: string[];
   /**
+   * Override the generation quality for this specific call.
+   * Falls back to OPENAI_IMAGE_QUALITY env var, then 'high'.
+   */
+  quality?: 'low' | 'medium' | 'high';
+  /**
    * Lasso selection mask exported from the browser canvas as a PNG data URI.
    * The selected area is filled red (rgba ~239,68,68); the rest is transparent.
    *

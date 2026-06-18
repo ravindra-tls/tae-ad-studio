@@ -323,6 +323,28 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     URL.revokeObjectURL(url);
   }, []);
 
+  const handleRegenerate = useCallback(async (img: GalleryImage) => {
+    const res = await fetch('/api/images/regenerate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ image_id: img.id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || `Regenerate failed (${res.status})`);
+    }
+    const blob   = await res.blob();
+    const url    = URL.createObjectURL(blob);
+    const slug   = (img.product_name ?? 'ad').toLowerCase().replace(/\s+/g, '-');
+    const a      = document.createElement('a');
+    a.href       = url;
+    a.download   = `tae-${slug}-${img.id.slice(0, 6)}-hq.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
   const TABS: { id: FilterTab; label: string; icon: React.ReactNode }[] = [
     { id: 'all',     label: 'All',     icon: <Images className="h-3.5 w-3.5" /> },
     { id: 'mine',    label: 'By Me',   icon: <User   className="h-3.5 w-3.5" /> },
@@ -505,6 +527,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
                         onDownload={() => handleDownload(img)}
                         onOpenLightbox={() => setLightboxIdx(item.colIdx - editEntries.length)}
                         onUpscale={() => handleUpscale(img)}
+                        onRegenerate={() => handleRegenerate(img)}
                         onEdit={img.session_id && (img as GalleryImage).product_id
                           ? () => setEditingImage(img as unknown as GeneratedImage)
                           : undefined}

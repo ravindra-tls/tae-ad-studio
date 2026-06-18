@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from 'react';
 import Image from 'next/image';
-import { Download, Star, FileText, Copy, Check, X, Pencil, Maximize2, Loader2 } from 'lucide-react';
+import { Download, Star, FileText, Copy, Check, X, Pencil, Maximize2, RefreshCw, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { GeneratedImage } from '@/types';
@@ -33,6 +33,8 @@ interface ImageCardProps {
   onEdit?:        () => void;
   /** Async — ImageCard shows a spinner while it resolves. */
   onUpscale?:     () => Promise<void>;
+  /** Re-submit to GPT Image-2 at max quality — fresh generation, not a pixel stretch. */
+  onRegenerate?:  () => Promise<void>;
   galleryMeta?:   GalleryMeta;
   /** Hide the "View Prompt" hover button + flip (e.g. dashboard thumbnails) */
   hidePrompt?:    boolean;
@@ -49,13 +51,15 @@ export function ImageCard({
   onOpenLightbox,
   onEdit,
   onUpscale,
+  onRegenerate,
   galleryMeta,
   hidePrompt = false,
 }: ImageCardProps) {
-  const [isBack,    setIsBack]    = useState(false);
-  const [animDir,   setAnimDir]   = useState<AnimDir | null>(null);
-  const [copied,    setCopied]    = useState(false);
-  const [upscaling, setUpscaling] = useState(false);
+  const [isBack,       setIsBack]       = useState(false);
+  const [animDir,      setAnimDir]      = useState<AnimDir | null>(null);
+  const [copied,       setCopied]       = useState(false);
+  const [upscaling,    setUpscaling]    = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   const handleFlip = useCallback(() => {
     const dir: AnimDir = isBack ? 'to-front' : 'to-back';
@@ -83,6 +87,17 @@ export function ImageCard({
       setUpscaling(false);
     }
   }, [onUpscale, upscaling]);
+
+  const handleRegenerate = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onRegenerate || regenerating) return;
+    setRegenerating(true);
+    try {
+      await onRegenerate();
+    } finally {
+      setRegenerating(false);
+    }
+  }, [onRegenerate, regenerating]);
 
   const isAnimating = animDir !== null;
   const showingBack = isBack && !isAnimating;
@@ -171,6 +186,20 @@ export function ImageCard({
                     {upscaling
                       ? <Loader2 className="h-3.5 w-3.5 text-brand-teal animate-spin" />
                       : <Maximize2 className="h-3.5 w-3.5 text-brand-forest" />
+                    }
+                  </button>
+                )}
+                {onRegenerate && (
+                  <button
+                    data-glow=""
+                    onClick={handleRegenerate}
+                    disabled={regenerating}
+                    className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150 disabled:opacity-60 disabled:cursor-wait"
+                    title={regenerating ? 'Regenerating at max quality…' : 'Regenerate at max quality (fresh GPT Image-2 call)'}
+                  >
+                    {regenerating
+                      ? <Loader2 className="h-3.5 w-3.5 text-brand-teal animate-spin" />
+                      : <RefreshCw className="h-3.5 w-3.5 text-brand-forest" />
                     }
                   </button>
                 )}

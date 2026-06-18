@@ -99,7 +99,7 @@ async function submitGenerations(
   size: string,
   params: GenerateParams,
 ): Promise<GenerateResult> {
-  const quality = process.env.OPENAI_IMAGE_QUALITY ?? 'high';
+  const quality = params.quality ?? process.env.OPENAI_IMAGE_QUALITY ?? 'high';
   const body: Record<string, unknown> = {
     model: modelId,
     prompt: params.prompt,
@@ -130,7 +130,7 @@ async function submitEdits(
   params: GenerateParams,
 ): Promise<GenerateResult> {
   const refs = params.referenceImageUrls ?? [];
-  const quality = process.env.OPENAI_IMAGE_QUALITY ?? 'high';
+  const quality = params.quality ?? process.env.OPENAI_IMAGE_QUALITY ?? 'high';
   const formData = new FormData();
   formData.append('model', modelId);
   formData.append('prompt', params.prompt);
