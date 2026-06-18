@@ -14,8 +14,11 @@ export const maxDuration = 120; // GPT Image-2 can take up to 2 min for max qual
  * with quality set to 'high' (maximum). This is a fresh generation — not
  * an algorithmic upscale — so the output may differ from the original.
  *
- * Use this when you want higher quality or a fresh take from the model,
- * not just a pixel-stretched version.
+ * Product ID is resolved with a two-step fallback:
+ *   1. session.product_id  — set for copy-ad sessions
+ *   2. brief.product_id    — set for pipeline sessions (template-generate)
+ * This ensures product images are always passed regardless of which
+ * workflow created the original image.
  *
  * Body: { image_id: string }
  * Response: image/png with Content-Disposition: attachment
@@ -41,18 +44,18 @@ export async function POST(request: NextRequest) {
 
   const service = await createServiceClient();
 
-  // ── Fetch generated_image + session (ownership check via session.user_id) ─
-  const { data: img, error: imgErr } = await service
+  // ── Fetch generated_image record (also grab brief_id for the fallback) ────
+  const { data: genImg, error: imgErr } = await service
     .from('generated_images')
-    .select('id, prompt_used, aspect_ratio, model_id, session_id')
+    .select('id, prompt_used, aspect_ratio, model_id, session_id, brief_id')
     .eq('id', image_id)
     .single();
 
-  if (imgErr || !img) {
+  if (imgErr || !genImg) {
     return NextResponse.json({ error: 'Image not found' }, { status: 404 });
   }
 
-  if (!img.prompt_used) {
+  if (!genImg.prompt_used) {
     return NextResponse.json({ error: 'Image has no stored prompt — cannot regenerate' }, { status: 422 });
   }
 
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
   const { data: session, error: sessErr } = await service
     .from('sessions')
     .select('id, user_id, product_id')
-    .eq('id', img.session_id)
+    .eq('id', genImg.session_id)
     .single();
 
   if (sessErr || !session || session.user_id !== user.id) {
@@ -84,36 +87,72 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Resolve product reference images ──────────────────────────────────────
-  const { data: rawProductImages } = await service
-    .from('product_images')
-    .select('*')
-    .eq('product_id', session.product_id)
-    .order('is_reference', { ascending: false })
-    .limit(6);
+  // ── Resolve product_id (session → brief fallback) ─────────────────────────
+  //
+  // copy-ad sessions store product_id directly on the session row.
+  // Pipeline (template-generate) sessions store product_id on the brief,
+  // not the session — so we fall back to the brief when session.product_id
+  // is null to ensure product images are always resolved.
+  let productId: string | null = session.product_id ?? null;
 
-  const resolvedProductImages = await resolveReferenceImages(
-    (rawProductImages ?? []) as ProductImage[]
-  );
-  const referenceImageUrls = [
+  if (!productId && genImg.brief_id) {
+    const { data: brief } = await service
+      .from('briefs')
+      .select('product_id')
+      .eq('id', genImg.brief_id)
+      .single();
+    productId = brief?.product_id ?? null;
+  }
+
+  // ── Fetch product row (for thumbnail_url) + product_images ───────────────
+  let thumbnailUrl: string | null = null;
+  let rawProductImages: ProductImage[] = [];
+
+  if (productId) {
+    const [productRes, imagesRes] = await Promise.all([
+      service
+        .from('products')
+        .select('id, thumbnail_url')
+        .eq('id', productId)
+        .single(),
+      service
+        .from('product_images')
+        .select('*')
+        .eq('product_id', productId)
+        .order('is_reference', { ascending: false })
+        .limit(6),
+    ]);
+
+    thumbnailUrl    = productRes.data?.thumbnail_url ?? null;
+    rawProductImages = (imagesRes.data ?? []) as ProductImage[];
+  } else {
+    console.warn('[regenerate] No product_id found via session or brief — generating without product images');
+  }
+
+  // ── Resolve signed URLs for product_images ────────────────────────────────
+  const resolvedProductImages = await resolveReferenceImages(rawProductImages);
+
+  const referenceImageUrls: string[] = [
     ...resolvedProductImages
-      .map((img: any) => img.resolved_url as string | null)
+      .map((r) => r.resolved_url)
       .filter((u): u is string => !!u),
+    ...(thumbnailUrl ? [thumbnailUrl] : []),
   ].slice(0, 4);
 
   // ── Re-generate at max quality ────────────────────────────────────────────
-  const aspectRatio = (img.aspect_ratio ?? '1:1') as AspectRatio;
-  const modelId     = (img.model_id ?? process.env.OPENAI_MODEL_ID ?? 'gpt-image-2');
+  const aspectRatio = (genImg.aspect_ratio ?? '1:1') as AspectRatio;
+  const modelId     = genImg.model_id ?? process.env.OPENAI_MODEL_ID ?? 'gpt-image-2';
 
   console.log(
     `[regenerate] image=${image_id} model=${modelId} aspect=${aspectRatio}` +
-    ` refs=${referenceImageUrls.length} quality=high prompt_len=${img.prompt_used.length}`,
+    ` product=${productId ?? 'none'} refs=${referenceImageUrls.length}` +
+    ` quality=high prompt_len=${genImg.prompt_used.length}`,
   );
 
   let result: Awaited<ReturnType<typeof imageProvider.submitGeneration>>;
   try {
     result = await imageProvider.submitGeneration({
-      prompt:             img.prompt_used,
+      prompt:             genImg.prompt_used,
       aspectRatio,
       modelId,
       referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
