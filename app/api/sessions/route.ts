@@ -1,34 +1,6 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-
-// ─── Shared helper — deletes sessions for a user that have zero generated images ──
-
-async function pruneEmptySessions(serviceClient: Awaited<ReturnType<typeof createServiceClient>>, userId: string) {
-  // 1. Get all session IDs for this user
-  const { data: allSessions } = await serviceClient
-    .from('sessions')
-    .select('id')
-    .eq('user_id', userId);
-
-  if (!allSessions?.length) return;
-
-  // 2. Of those, find which ones actually have at least one completed image
-  const { data: populated } = await serviceClient
-    .from('generated_images')
-    .select('session_id')
-    .eq('status', 'completed')
-    .in('session_id', allSessions.map((s) => s.id));
-
-  const idsWithImages = new Set((populated ?? []).map((r) => r.session_id));
-
-  // 3. Delete the ones with no images
-  const emptyIds = allSessions.map((s) => s.id).filter((id) => !idsWithImages.has(id));
-
-  if (emptyIds.length > 0) {
-    const { error } = await serviceClient.from('sessions').delete().in('id', emptyIds);
-    if (error) console.error('[pruneEmptySessions] delete error:', error.message);
-  }
-}
+import { pruneEmptySessions } from '@/lib/prune-sessions';
 
 // ─── GET — list sessions (empty ones are pruned first) ────────────────────────
 

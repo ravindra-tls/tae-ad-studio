@@ -8,6 +8,7 @@ import { WorkflowCards } from '@/components/WorkflowCards';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { daysUntilReset, formatDate } from '@/lib/utils';
+import { pruneEmptySessions } from '@/lib/prune-sessions';
 
 export default async function DashboardPage({
   searchParams,
@@ -26,26 +27,8 @@ export default async function DashboardPage({
     serviceClient.from('products').select('id, name, brand, sub_brand, thumbnail_url').order('brand'),
   ]);
 
-  // ── Prune empty sessions before loading the list ──────────────
-  const { data: allSessions } = await serviceClient
-    .from('sessions')
-    .select('id')
-    .eq('user_id', user.id);
-
-  if (allSessions?.length) {
-    const { data: populated } = await serviceClient
-      .from('generated_images')
-      .select('session_id')
-      .eq('status', 'completed')
-      .in('session_id', allSessions.map((s) => s.id));
-
-    const idsWithImages = new Set((populated ?? []).map((r) => r.session_id));
-    const emptyIds = allSessions.map((s) => s.id).filter((id) => !idsWithImages.has(id));
-
-    if (emptyIds.length > 0) {
-      await serviceClient.from('sessions').delete().in('id', emptyIds);
-    }
-  }
+  // ── Prune dead sessions before loading the list (shared rules) ──
+  await pruneEmptySessions(serviceClient, user.id);
 
   // ── Fetch the (now-clean) session list ───────────────────────
   const { data: sessions } = await serviceClient
