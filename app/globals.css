@@ -166,9 +166,56 @@
   .scroll-spring::-webkit-scrollbar       { width: 4px; }
   .scroll-spring::-webkit-scrollbar-track { background: transparent; }
   .scroll-spring::-webkit-scrollbar-thumb { background: #B9B78F; border-radius: 4px; }
+
+  /* ── Concept Forge: skeleton shimmer + busy-card sweep ──────────── */
+  /* Self-contained keyframes (forgeShimmer below) so these utilities
+     never depend on a Tailwind animation class being present on the page. */
+  .forge-shimmer {
+    background: linear-gradient(90deg, #ece5da 25%, #f8f4ee 37%, #ece5da 63%);
+    background-size: 400px 100%;
+    animation: forgeShimmer 1.4s linear infinite;
+  }
+  /* Card busy in a background call (finalize / refine): read-only shimmer
+     sweep over the whole card — content stays legible underneath. */
+  .forge-busy {
+    position: relative;
+    pointer-events: none;
+  }
+  .forge-busy::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      rgba(242, 232, 221, 0) 25%,
+      rgba(242, 232, 221, 0.55) 37%,
+      rgba(242, 232, 221, 0) 63%
+    );
+    background-size: 400px 100%;
+    animation: forgeShimmer 1.4s linear infinite;
+    pointer-events: none;
+  }
+}
+
+/* ── Reduced motion: collapse all animation/transition to a single frame ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ── Keyframes (outside @layer so they're always available) ─── */
+@keyframes forgeShimmer {
+  from { background-position: -400px 0; }
+  to   { background-position: 400px 0; }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }

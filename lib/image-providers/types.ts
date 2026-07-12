@@ -1,3 +1,6 @@
+/** The aspect ratios every provider's size map supports. */
+export type AspectRatio = '1:1' | '4:5' | '9:16' | '16:9' | '3:4';
+
 export interface GenerateParams {
   prompt: string;
   referenceImageUrls?: string[];
@@ -15,7 +18,7 @@ export interface GenerateParams {
    * from the generated image back onto the original.
    */
   maskDataUrl?: string;
-  aspectRatio: '1:1' | '4:5' | '9:16' | '16:9' | '3:4';
+  aspectRatio: AspectRatio;
   modelId?: string;
   /**
    * Optional hard-block list. Not all providers support a native

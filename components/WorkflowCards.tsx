@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { compressImageToDataUrl } from '@/lib/client/compress';
 import { X, ImagePlus, ChevronRight, Loader2, Check, AlertCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -270,32 +271,9 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [step, onClose]);
 
-  // Image compression
-  const MAX_EDGE_PX = 1280;
+  // Image compression — shared util (1280px long edge, JPEG 0.85)
   const compressToDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(reader.error);
-      reader.onload = () => {
-        const src = reader.result as string;
-        const img = new window.Image();
-        img.onerror = () => reject(new Error('Image decode failed'));
-        img.onload = () => {
-          const longEdge = Math.max(img.width, img.height);
-          const scale = longEdge > MAX_EDGE_PX ? MAX_EDGE_PX / longEdge : 1;
-          const w = Math.round(img.width * scale);
-          const h = Math.round(img.height * scale);
-          const canvas = document.createElement('canvas');
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) { resolve(src); return; }
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
-        };
-        img.src = src;
-      };
-      reader.readAsDataURL(file);
-    });
+    compressImageToDataUrl(file, { maxEdgePx: 1280, quality: 0.85 });
 
   const handleFilesAdd = async (files: File[]) => {
     const remaining = MAX_REFS - refImages.length;

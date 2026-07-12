@@ -17,7 +17,7 @@ export function AppLayout({ fullName, email, isAdmin, children }: AppLayoutProps
 
       {/* Main content — body scrolls so position:fixed works correctly */}
       <main className="flex-1 min-w-0">
-        <div className="mx-auto max-w-6xl p-6 lg:p-8">
+        <div className="mx-auto max-w-6xl p-6 lg:p-8 has-[[data-fullbleed]]:max-w-none has-[[data-fullbleed]]:p-0">
           {children}
         </div>
       </main>

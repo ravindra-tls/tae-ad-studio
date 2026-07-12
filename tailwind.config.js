@@ -87,6 +87,43 @@ module.exports = {
           from: { opacity: '0', transform: 'translateY(12px) scale(0.97)' },
           to:   { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
+        // ── Concept Forge ─────────────────────────────────────────
+        // Skeleton / busy-card gradient sweep
+        shimmer: {
+          from: { backgroundPosition: '-400px 0' },
+          to:   { backgroundPosition: '400px 0' },
+        },
+        // Slim indeterminate progress bar sweep
+        progressSlide: {
+          from: { backgroundPosition: '-200px 0' },
+          to:   { backgroundPosition: '200px 0' },
+        },
+        // Tab-count lime glow ring after a background finalize lands
+        countGlow: {
+          '0%':   { boxShadow: '0 0 0 0 #C5D933' },
+          '60%':  { boxShadow: '0 0 0 6px rgba(197, 217, 51, 0)' },
+          '100%': { boxShadow: 'none' },
+        },
+        // Full-plane detail entrance
+        detailIn: {
+          from: { opacity: '0', transform: 'translateY(14px)' },
+          to:   { opacity: '1', transform: 'translateY(0)' },
+        },
+        // Board card highlight when revealed from a chat chip
+        cardFlash: {
+          '0%':   { boxShadow: '0 0 0 3px #C5D933' },
+          '100%': { boxShadow: '0 0 0 0 rgba(197, 217, 51, 0)' },
+        },
+        // Thinking dots / unread indicator pulse
+        dotPulse: {
+          '0%, 100%': { opacity: '0.35', transform: 'scale(0.85)' },
+          '50%':      { opacity: '1',    transform: 'scale(1)' },
+        },
+        // Overlay sheet entrance from the right edge
+        slideInRight: {
+          from: { transform: 'translateX(100%)' },
+          to:   { transform: 'translateX(0)' },
+        },
       },
 
       // ── Named animation utilities ──────────────────────────────────
@@ -98,6 +135,14 @@ module.exports = {
         'slide-up':    'slideUp 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
         'pill-press':  'pillPress 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
         'stagger-in':  'staggerIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both',
+        // ── Concept Forge ──────────────────────────────────────────────
+        'shimmer':        'shimmer 1.4s linear infinite',
+        'progress-slide': 'progressSlide 1.2s linear infinite',
+        'count-glow':     'countGlow 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'detail-in':      'detailIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) both',
+        'card-flash':     'cardFlash 1.6s ease-out',
+        'dot-pulse':      'dotPulse 1.2s ease-in-out infinite',
+        'slide-in-right': 'slideInRight 0.3s cubic-bezier(0.25, 1.20, 0.5, 1) both',
       },
     },
   },

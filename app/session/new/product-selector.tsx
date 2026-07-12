@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Loader2, ImagePlus, X, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { compressImageToDataUrl } from '@/lib/client/compress';
 import type { Product } from '@/types';
 
 interface ProductSelectorProps {
@@ -43,67 +44,55 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
     setError('');
 
     try {
-      const name = `${product.name} — ${new Date().toLocaleDateString()}`;
-
-      const res = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: product.id, name }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Failed to create session');
-        setCreatingFor(null);
-        return;
+      let sessionId: string;
+      if (flow === 'brief') {
+        // Concept Forge session — the server also builds/loads the product's
+        // grounding deck, which can take up to a minute the first time a
+        // product is used.
+        const res = await fetch('/api/forge/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId: product.id }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || 'Failed to create session');
+          setCreatingFor(null);
+          return;
+        }
+        sessionId = data.session.id;
+      } else {
+        const name = `${product.name} — ${new Date().toLocaleDateString()}`;
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId: product.id, name }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || 'Failed to create session');
+          setCreatingFor(null);
+          return;
+        }
+        sessionId = data.id;
       }
 
       // Show optional upload step
-      setCreatedSessionId(data.id);
+      setCreatedSessionId(sessionId);
       setSelectedProduct(product);
       setShowUploadStep(true);
     } catch (e) {
       setError('Something went wrong. Please try again.');
       setCreatingFor(null);
     }
-  }, [creatingFor]);
+  }, [creatingFor, flow]);
 
   // Downscale + JPEG-encode so we do not blow the ~5MB sessionStorage quota
   // when stashing previews between pages. Phone photos come in at 4-8MB as
   // PNG data URLs; after this they are typically 150-400KB each.
-  const MAX_EDGE_PX = 1280;
-  const JPEG_QUALITY = 0.85;
-
+  // Shared util (1280px long edge, JPEG 0.85).
   const compressToDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(reader.error);
-      reader.onload = () => {
-        const src = reader.result as string;
-        const img = new Image();
-        img.onerror = () => reject(new Error('Image decode failed'));
-        img.onload = () => {
-          const longEdge = Math.max(img.width, img.height);
-          const scale = longEdge > MAX_EDGE_PX ? MAX_EDGE_PX / longEdge : 1;
-          const w = Math.round(img.width * scale);
-          const h = Math.round(img.height * scale);
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            // Fallback to the raw dataUrl — caller handles quota failure downstream.
-            resolve(src);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
-        };
-        img.src = src;
-      };
-      reader.readAsDataURL(file);
-    });
+    compressImageToDataUrl(file, { maxEdgePx: 1280, quality: 0.85 });
 
   const handleFilesSelected = (files: FileList) => {
     Array.from(files).forEach(async (file) => {
@@ -148,8 +137,42 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
     return () => window.removeEventListener('keydown', handleKey);
   }, [showUploadStep, closeUploadStep]);
 
-  const proceedToTemplates = () => {
-    if (!createdSessionId) return;
+  const [finishing, setFinishing] = useState(false);
+
+  const proceedToTemplates = async () => {
+    if (!createdSessionId || finishing) return;
+
+    if (flow === 'brief') {
+      // Forge references are durable — upload them to the session now (the
+      // forge workspace shows/removes them and generation attaches them).
+      if (uploadedPreviews.length > 0) {
+        setFinishing(true);
+        try {
+          const res = await fetch('/api/forge/references', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: createdSessionId,
+              references: uploadedPreviews.slice(0, 4).map((p) => ({
+                imageBase64: p.dataUrl,
+                mimeType: 'image/jpeg',
+              })),
+            }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            console.warn('[product-selector] forge reference upload failed:', data.error);
+          }
+        } catch (e) {
+          console.warn('[product-selector] forge reference upload failed:', e);
+        } finally {
+          setFinishing(false);
+        }
+      }
+      router.push(`/session/${createdSessionId}/forge`);
+      return;
+    }
+
     // Store uploaded images in sessionStorage so the prompts page can pick
     // them up. sessionStorage caps around 5MB per origin — we pre-compress
     // in handleFilesSelected, but large batches can still overflow. If it
@@ -171,10 +194,7 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
         );
       }
     }
-    const dest = flow === 'brief'
-      ? `/session/${createdSessionId}/brief`
-      : `/session/${createdSessionId}/prompts`;
-    router.push(dest);
+    router.push(`/session/${createdSessionId}/prompts`);
   };
 
   return (
@@ -236,9 +256,13 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
             />
             {creatingFor === product.id && !showUploadStep && (
               <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/80 backdrop-blur-[2px]">
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col items-center gap-2 px-3 text-center">
                   <Loader2 className="h-6 w-6 animate-spin text-brand-forest" />
-                  <span className="text-xs font-medium text-brand-forest">Starting session…</span>
+                  <span className="text-xs font-medium text-brand-forest">
+                    {flow === 'brief'
+                      ? 'Preparing product grounding — first time can take a minute…'
+                      : 'Starting session…'}
+                  </span>
                 </div>
               </div>
             )}
@@ -342,10 +366,16 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
               </button>
               <Button
                 onClick={proceedToTemplates}
+                disabled={finishing}
                 className="gap-2 bg-brand-forest hover:bg-brand-forest/90 hover:scale-[1.03] active:scale-95 transition-[transform,background-color] duration-150"
                 style={{ transitionTimingFunction: 'var(--spring)' }}
               >
-                {uploadedPreviews.length > 0 ? (
+                {finishing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading references…
+                  </>
+                ) : uploadedPreviews.length > 0 ? (
                   <>Continue with {uploadedPreviews.length} image{uploadedPreviews.length > 1 ? 's' : ''}</>
                 ) : (
                   <>Continue without images</>
