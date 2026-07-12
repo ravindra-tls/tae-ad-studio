@@ -1,5 +1,7 @@
 # TAE Ad Studio — Visual Flows
 
+> **SUPERSEDED (2026-07-10):** flows 2–3 (brief-first pipeline) have been replaced by the **Concept Forge** workspace (`app/session/[id]/forge`). Kept for history.
+
 Mermaid diagrams. Render inline on GitHub, VS Code (with Mermaid preview extension), or any modern Markdown viewer.
 
 ---

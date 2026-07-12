@@ -1,5 +1,7 @@
 # V1 Plan — TAE Ad Studio
 
+> **SUPERSEDED (2026-07-10):** the brief-first pipeline described here (brief → concept → copy → visual → render → critique) has been replaced by the **Concept Forge** workspace (`app/session/[id]/forge`, `lib/forge/*`, migration `016_concept_forge.sql`). This doc is kept for history; the `briefs`/`concepts` tables remain in the DB for gallery provenance.
+
 _Working doc. Revised 2026-04-18 after Ravindra's inline review._
 _Anchor commit: `22b06f9`._
 

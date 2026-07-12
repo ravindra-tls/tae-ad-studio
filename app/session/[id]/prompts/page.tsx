@@ -48,10 +48,9 @@ export default async function PromptsPage({ params }: { params: { id: string } }
     url: r.resolved_url,
   }));
 
-  // Feature flag: when `brief_first_ui` is on for this user, surface a link to
-  // the new brief-first entry point alongside the existing template grid. Both
-  // remain visible — the flag controls discovery, not removal.
-  const briefFirstEnabled = await isEnabled('brief_first_ui', user.id);
+  // Feature flag: when `concept_forge_ui` is on for this user, surface a link
+  // to the Concept Forge entry point alongside the existing template grid.
+  const briefFirstEnabled = await isEnabled('concept_forge_ui', user.id);
 
   return (
     <PromptWorkspace

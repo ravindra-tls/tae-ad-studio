@@ -8,6 +8,8 @@ import type { Product, ProductContext, Ingredient, Claim, ColorEntry } from '@/t
 import { updateProduct, deleteProduct, uploadProductThumbnail, seedProductThumbnails, createProduct } from './actions';
 import type { ProductUpdatePayload, ProductCreatePayload } from './actions';
 import ProductSynthesizeModal from '@/components/ProductSynthesizeModal';
+import { ForgeDeckPanel } from './forge-deck-panel';
+import type { ProductDeckRow } from './forge-deck-panel';
 import type { ResearchRow } from './page';
 import type { PositioningResearch } from '@/lib/research/types';
 
@@ -943,7 +945,7 @@ function ResearchSection({
 // Main viewer
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ProductContextViewer({ products, researchByProduct }: { products: Product[]; researchByProduct: Record<string, ResearchRow> }) {
+export function ProductContextViewer({ products, researchByProduct, decksByProduct = {} }: { products: Product[]; researchByProduct: Record<string, ResearchRow>; decksByProduct?: Record<string, ProductDeckRow> }) {
   const [activeId,        setActiveId]        = useState<string>(products[0]?.id ?? '');
   const [editMode,        setEditMode]        = useState(false);
   const [draft,           setDraft]           = useState<Draft | null>(null);
@@ -1555,6 +1557,13 @@ export function ProductContextViewer({ products, researchByProduct }: { products
             </Section>
           );
         })()}
+
+        {/* ── Concept Forge deck: Audience & Personas ── */}
+        <ForgeDeckPanel
+          key={product.id}
+          product={product}
+          deckRow={decksByProduct[product.id] ?? null}
+        />
 
       </div>
 

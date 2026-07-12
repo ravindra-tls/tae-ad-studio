@@ -23,7 +23,7 @@ import { fillTemplate, aiEnrichPrompt, assemblePrompt } from '@/lib/prompt-assem
 import { imageProvider, getGeneratedFileExtension } from '@/lib/image-providers';
 import { resolveReferenceImages } from '@/lib/storage/reference-images';
 import type { Product, ProductImage } from '@/types';
-import type { AspectRatio } from '@/lib/hooks/use-generation-stream';
+import type { AspectRatio } from '@/lib/image-providers/types';
 
 // ─── Load image-to-template skill (same skill as admin template generate) ─────
 

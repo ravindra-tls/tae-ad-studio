@@ -6,8 +6,7 @@
     "dev": "next dev -p 5020",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "smoke:brief-first": "tsx --tsconfig tsconfig.json scripts/smoke-brief-first.ts"
+    "lint": "next lint"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
