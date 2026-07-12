@@ -1,3 +1,12 @@
+import type {
+  CardDna as ForgeCardDnaType,
+  ChampionOutput as ForgeChampionOutputType,
+  DeckOverrides as ForgeDeckOverridesType,
+  ExportRecord as ForgeExportRecordType,
+  ForgeCard as ForgeCardType,
+  ForgeDeck as ForgeDeckType,
+} from '@/lib/forge/types';
+
 export interface Profile {
   id: string;
   email: string;
@@ -177,6 +186,8 @@ export interface Session {
   product_id: string;
   name: string;
   status: 'active' | 'archived';
+  /** Origin workflow: 'template' | 'brief' | 'copy_ad' | 'forge' (Concept Forge). */
+  source?: string;
   created_at: string;
   product?: Product;
 }
@@ -281,6 +292,8 @@ export interface GeneratedImage {
   model_id: string | null;
   request_id: string | null;
   template_id: string | null;
+  /** Provenance: the finalized Concept Forge concept that produced this image. */
+  forge_concept_id?: string | null;
   status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw';
   error_message: string | null;
   created_at: string;
@@ -320,3 +333,62 @@ export interface FeedbackSubmission {
   reviewer_note: string | null;
   created_at: string;
 }
+
+// ─── Concept Forge (migration 016) ───────────────────────────────────────────
+
+/**
+ * Durable finalized (champion) Concept Forge concept.
+ * `card` = source card snapshot at finalize time, `champion` = polished copy,
+ * `export_record` = latest template-filled image prompt. Re-finalizing a card
+ * replaces its row (UNIQUE session_id + card_id).
+ */
+export interface ForgeConcept {
+  id: string;
+  session_id: string;
+  card_id: string;
+  dna: ForgeCardDnaType | null;
+  card: ForgeCardType;
+  champion: ForgeChampionOutputType;
+  export_record: ForgeExportRecordType | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Distilled Concept Forge grounding deck per product. `overrides` holds
+ * durable admin edits merged over every re-distill; `prompt_block` is the
+ * pre-rendered deckToPromptBlock string (byte-stable prompt-cache prefix).
+ */
+export interface ProductDeck {
+  product_id: string;
+  deck: ForgeDeckType;
+  overrides: ForgeDeckOverridesType;
+  prompt_block: string | null;
+  source_hash: string;
+  model_id: string | null;
+  distilled_at: string;
+}
+
+// Re-export the key forge domain types so app code can import from '@/types'.
+export type {
+  ForgeState,
+  ForgeCard,
+  CardDna as ForgeCardDna,
+  CardScores as ForgeCardScores,
+  ForgePins,
+  ForgeLoadout,
+  ForgeInsight,
+  ForgeChatMessage,
+  ChampionOutput as ForgeChampionOutput,
+  ChampionEntry as ForgeChampionEntry,
+  ExportRecord as ForgeExportRecord,
+  ForgeDeck,
+  DeckOverrides as ForgeDeckOverrides,
+  DeckPersona as ForgeDeckPersona,
+  DeckPain as ForgeDeckPain,
+  DeckDepth as ForgeDeckDepth,
+  ForgeSessionView,
+  ForgeDeckView,
+  Taxonomies as ForgeTaxonomies,
+  UserRef as ForgeUserRef,
+} from '@/lib/forge/types';
