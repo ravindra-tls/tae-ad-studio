@@ -22,3 +22,6 @@ Thumbs.db
 # Scratch folders — not committed
 tmp/
 docs/
+
+# Local research working documents
+*.docx
