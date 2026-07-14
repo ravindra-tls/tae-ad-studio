@@ -34,6 +34,49 @@ function resolveSize(aspectRatio: string): string {
   return ASPECT_SIZE_MAP[aspectRatio] ?? '1024x1024';
 }
 
+// gpt-image edits/generations legitimately take 30–90s. The bare fetch has no
+// timeout and, on this network, long calls get their socket dropped ~30s in
+// (undici surfaces it as the opaque "fetch failed"). Give it a real ceiling and
+// one retry for a dropped connection, and turn the opaque error into something
+// actionable. Tunable via OPENAI_IMAGE_TIMEOUT_MS.
+const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_IMAGE_TIMEOUT_MS) || 180_000;
+const DROPPED_CONN_RE = /fetch failed|terminated|socket hang up|ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR/i;
+
+async function openAIFetch(url: string, init: RequestInit, label: string): Promise<Response> {
+  const maxAttempts = 2; // one retry, only for a dropped connection (never for our own timeout)
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS) });
+    } catch (err) {
+      lastErr = err;
+      const e = err as { name?: string; message?: string; cause?: { code?: string; message?: string } };
+      const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+      const probe = `${e?.message ?? ''} ${e?.cause?.message ?? ''} ${e?.cause?.code ?? ''}`;
+      const droppedConn = !timedOut && DROPPED_CONN_RE.test(probe);
+      console.warn(
+        `[OpenAI] ${label} attempt ${attempt}/${maxAttempts} failed: ${e?.message ?? 'error'}` +
+          `${e?.cause?.code ? ` (${e.cause.code})` : ''}`,
+      );
+      if (!droppedConn || attempt === maxAttempts) break;
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+  const e = lastErr as { name?: string; message?: string; cause?: { code?: string } };
+  if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+    throw new Error(
+      `OpenAI image ${label} timed out after ${Math.round(OPENAI_TIMEOUT_MS / 1000)}s. ` +
+        `Try again, or lower the image quality/size.`,
+    );
+  }
+  const code = e?.cause?.code ? ` (${e.cause.code})` : '';
+  throw new Error(
+    `Could not reach the OpenAI image API${code}: ${e?.message ?? 'network error'}. ` +
+      `The connection was dropped before a response — usually a long generation exceeding a network/proxy timeout. ` +
+      `Try again, or lower the image quality/size.`,
+  );
+}
+
 async function fetchImageAsBuffer(src: string): Promise<{ buffer: Buffer; mimeType: string }> {
   if (src.startsWith('data:')) {
     const match = src.match(/^data:([^;]+);base64,(.+)$/);
@@ -111,14 +154,14 @@ async function submitGenerations(
 
   console.log(`[OpenAI] /generations, model=${modelId}, size=${size}, prompt_len=${params.prompt.length}`);
 
-  const response = await fetch(OPENAI_GENERATIONS_URL, {
+  const response = await openAIFetch(OPENAI_GENERATIONS_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  });
+  }, 'generations');
 
   return parseImageResponse(response, 'generations');
 }
@@ -174,11 +217,11 @@ async function submitEdits(
     `[OpenAI] /edits, model=${modelId}, size=${size}, refs=${refs.length}, mask=${!!params.maskDataUrl}, prompt_len=${params.prompt.length}`,
   );
 
-  const response = await fetch(OPENAI_EDITS_URL, {
+  const response = await openAIFetch(OPENAI_EDITS_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
     body: formData,
-  });
+  }, 'edits');
 
   return parseImageResponse(response, 'edits');
 }
