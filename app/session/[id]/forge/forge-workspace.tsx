@@ -11,7 +11,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SnackbarProvider } from '@/components/ui/snackbar';
 import { ForgeProvider, useForgeStore, dedupedChampions } from './state/forge-store';
 import { useDealStream } from './state/use-deal-stream';
 import { LOADING_MSGS, useRotatingMessage } from './state/messages';
@@ -35,11 +34,9 @@ export interface ForgeWorkspaceProps {
 
 export function ForgeWorkspace(props: ForgeWorkspaceProps) {
   return (
-    <SnackbarProvider>
-      <ForgeProvider sessionId={props.sessionId} initialDeck={props.initialDeck}>
-        <WorkspaceInner {...props} />
-      </ForgeProvider>
-    </SnackbarProvider>
+    <ForgeProvider sessionId={props.sessionId} initialDeck={props.initialDeck}>
+      <WorkspaceInner {...props} />
+    </ForgeProvider>
   );
 }
 

@@ -168,6 +168,7 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
                 return (
                   <div
                     key={item.key}
+                    data-edit-arrival=""
                     className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden animate-edit-arrive"
                     style={{ aspectRatio: item.entry.aspectRatio.replace(':', '/') }}
                   >

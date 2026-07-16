@@ -10,15 +10,15 @@
  * workspace-scoped prompt_templates row.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Modal } from '@/components/ui/modal';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Sparkles, X, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { Sparkles, Check, Loader2, AlertTriangle } from 'lucide-react';
 
 const ASPECT_RATIOS = ['1:1', '4:5', '9:16', '16:9', '3:4'] as const;
 
@@ -83,16 +83,6 @@ export function ApproveProposal({ proposalId, proposalTitle, categories }: Appro
     if (open) loadDraft();
   }, [open, loadDraft]);
 
-  // Escape to close (not while a request is in flight)
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loading && !submitting) setOpen(false);
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [open, loading, submitting]);
-
   const handleApprove = async () => {
     if (!name.trim() || !template.trim()) {
       setError('Name and template are required.');
@@ -137,41 +127,44 @@ export function ApproveProposal({ proposalId, proposalTitle, categories }: Appro
         Approve as template…
       </Button>
 
-      {open && createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
-            animation: 'overlayIn 0.2s ease forwards',
-          }}
-          onClick={() => { if (!loading && !submitting) setOpen(false); }}
-        >
-          <div
-            className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]"
-            style={{ animation: 'modalIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-brand-sage/20 px-6 py-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-brand-lime" />
-                  <h2 className="text-base font-semibold text-brand-black">Approve as Template</h2>
-                </div>
-                <p className="text-xs text-brand-slate mt-0.5">
-                  {proposalTitle} — review the draft, then approve to add it to your workspace
-                </p>
-              </div>
-              <button
-                onClick={() => { if (!loading && !submitting) setOpen(false); }}
-                className="rounded-lg p-1.5 text-brand-slate hover:bg-brand-cream hover:text-brand-forest"
-              >
-                <X className="h-4 w-4" />
-              </button>
+      {open && (
+        <Modal
+          open
+          onClose={() => setOpen(false)}
+          disableClose={loading || submitting}
+          maxWidth="max-w-2xl"
+          title={
+            <span className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 shrink-0 text-brand-lime" />
+              Approve as Template
+            </span>
+          }
+          subtitle={`${proposalTitle} — review the draft, then approve to add it to your workspace`}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={loading || submitting}>
+                Cancel
+              </Button>
+              {!loading && !hasDraft ? (
+                <Button size="sm" onClick={loadDraft} className="bg-brand-forest hover:bg-brand-forest/90">
+                  Retry draft
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={handleApprove}
+                  disabled={loading || submitting || !hasDraft}
+                  className="bg-brand-forest hover:bg-brand-forest/90"
+                >
+                  {submitting
+                    ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Approving…</>
+                    : <><Check className="mr-1.5 h-3.5 w-3.5" />Approve</>
+                  }
+                </Button>
+              )}
             </div>
-
+          }
+        >
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {loading ? (
@@ -248,32 +241,7 @@ export function ApproveProposal({ proposalId, proposalTitle, categories }: Appro
               )}
             </div>
 
-            {/* Footer */}
-            <div className="flex justify-end gap-2 border-t border-brand-sage/20 px-6 py-4">
-              <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={loading || submitting}>
-                Cancel
-              </Button>
-              {!loading && !hasDraft ? (
-                <Button size="sm" onClick={loadDraft} className="bg-brand-forest hover:bg-brand-forest/90">
-                  Retry draft
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={handleApprove}
-                  disabled={loading || submitting || !hasDraft}
-                  className="bg-brand-forest hover:bg-brand-forest/90"
-                >
-                  {submitting
-                    ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Approving…</>
-                    : <><Check className="mr-1.5 h-3.5 w-3.5" />Approve</>
-                  }
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body,
+        </Modal>
       )}
     </>
   );

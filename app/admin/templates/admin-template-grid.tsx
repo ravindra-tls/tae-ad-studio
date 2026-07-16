@@ -13,6 +13,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Modal } from '@/components/ui/modal';
+import { useSnackbar } from '@/components/ui/snackbar';
 import { cn } from '@/lib/utils';
 import { LoadingAnimations } from '@/components/loading-animations';
 import { loadingMessages } from '@/lib/loading-messages';
@@ -234,7 +236,6 @@ function CreateTemplateModal({
   const [error,        setError]        = useState<string | null>(null);
   const [template,     setTemplate]     = useState<PromptTemplate | null>(null);
   const [testResults,  setTestResults]  = useState<TestResult[]>([]);
-  const [mounted,      setMounted]      = useState(false);
   const [isDragging,   setIsDragging]   = useState(false);
 
   // ── Inline loading state (mirrors LoadingExperience internals) ──
@@ -248,16 +249,7 @@ function CreateTemplateModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setMounted(true); }, []);
-
   const isLoading = step === 'generating' || step === 'testing';
-
-  // Escape key — block during loading
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !isLoading) onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [isLoading, onClose]);
 
   // Reset + seed loading state when a loading step begins
   useEffect(() => {
@@ -387,29 +379,10 @@ function CreateTemplateModal({
     }
   };
 
-  if (!mounted) return null;
-
   const LoadingAnimComponent = LoadingAnimations[loadingAnimIdx];
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{
-        backgroundColor: 'rgba(0,0,0,0.45)',
-        backdropFilter:  'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)',
-        animation: 'overlayIn 0.2s ease forwards',
-      }}
-      onClick={() => { if (!isLoading) onClose(); }}
-    >
-      <div
-        className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col"
-        style={{
-          maxHeight: '90vh',
-          animation: 'modalIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+  return (
+    <Modal open onClose={onClose} disableClose={isLoading} maxWidth="max-w-2xl">
 
         {/* ── STEP: input ── */}
         {step === 'input' && (
@@ -740,9 +713,7 @@ function CreateTemplateModal({
             </div>
           </>
         )}
-      </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
 
@@ -799,15 +770,6 @@ function EditModal({
   const [aspectRatio,  setAspectRatio]  = useState(template.default_aspect_ratio);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState<string | null>(null);
-  const [mounted,      setMounted]      = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
-
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
 
   const handleSave = async () => {
     if (!name.trim() || !category.trim() || !templateText.trim()) {
@@ -831,34 +793,31 @@ function EditModal({
     }
   };
 
-  if (!mounted) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ animation: 'overlayIn 0.2s ease forwards', backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]"
-        style={{ animation: 'modalIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-brand-sage/20 px-6 py-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-brand-lime">#{template.number}</span>
-              <h2 className="text-base font-semibold text-brand-black">{template.name}</h2>
-              <Badge variant="secondary" className="text-[10px]">{template.category}</Badge>
-            </div>
-            <p className="text-xs text-brand-slate mt-0.5">System-level edit — changes apply to all future generations</p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-brand-slate hover:bg-brand-cream hover:text-brand-forest">
-            <X className="h-4 w-4" />
-          </button>
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      maxWidth="max-w-2xl"
+      title={
+        <span className="flex items-center gap-2">
+          <span className="text-xs font-bold text-brand-lime">#{template.number}</span>
+          {template.name}
+          <Badge variant="secondary" className="font-sans text-[10px]">{template.category}</Badge>
+        </span>
+      }
+      subtitle="System-level edit — changes apply to all future generations"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving} className="bg-brand-forest hover:bg-brand-forest/90">
+            {saving
+              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Saving…</>
+              : <><Check className="mr-1.5 h-3.5 w-3.5" />Save changes</>
+            }
+          </Button>
         </div>
-
+      }
+    >
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {/* Name + Category row */}
@@ -907,20 +866,7 @@ function EditModal({
 
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-2 border-t border-brand-sage/20 px-6 py-4">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving} className="bg-brand-forest hover:bg-brand-forest/90">
-            {saving
-              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Saving…</>
-              : <><Check className="mr-1.5 h-3.5 w-3.5" />Save changes</>
-            }
-          </Button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
 
@@ -934,6 +880,7 @@ export function AdminTemplateGrid({
   workspaceId,
 }: AdminTemplateGridProps) {
   const router = useRouter();
+  const snackbar = useSnackbar();
 
   const [templates,           setTemplates]           = useState(initialTemplates);
   const [imagesByTemplate,    setImagesByTemplate]    = useState(initialImagesByTemplate);
@@ -960,7 +907,7 @@ export function AdminTemplateGrid({
         prev.map((t) => t.id === templateId ? { ...t, preview_image_url: data.preview_image_url } : t)
       );
     } catch (err: any) {
-      alert(`Preview failed: ${err.message}`);
+      snackbar.show({ message: `Preview failed: ${err.message}`, tone: 'error' });
     } finally {
       setGeneratingPreviewId(null);
     }
@@ -1003,7 +950,7 @@ export function AdminTemplateGrid({
       setTemplates((prev) => prev.filter((t) => t.id !== id));
     } else {
       const d = await res.json().catch(() => ({}));
-      alert(d.error || `${isDev ? 'Delete' : 'Archive'} failed`);
+      snackbar.show({ message: d.error || `${isDev ? 'Delete' : 'Archive'} failed`, tone: 'error' });
     }
     setConfirmDeleteId(null);
     setDeleting(false);
@@ -1020,7 +967,7 @@ export function AdminTemplateGrid({
       setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, workspace_id: null } : t)));
       router.refresh();
     } catch (err: any) {
-      alert(`Promote failed: ${err.message}`);
+      snackbar.show({ message: `Promote failed: ${err.message}`, tone: 'error' });
     } finally {
       setPromotingId(null);
     }

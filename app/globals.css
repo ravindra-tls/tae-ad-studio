@@ -38,8 +38,8 @@
 
   /*
    * Pointer-tracking inner glow — opt-in via data-glow attribute.
-   * Only applied to <Button> CTA components (which set data-glow
-   * automatically). Rows, list items, bare icon buttons and other
+   * <Button> sets it automatically on primary CTA variants only
+   * (default + gold). Rows, list items, bare icon buttons and other
    * clickable elements are excluded.
    * --gx / --gy are written by ButtonGlowTracker.tsx via a single
    * delegated mousemove listener on document (zero re-renders).
@@ -64,9 +64,9 @@
      */
     background: radial-gradient(
       ellipse var(--gw, 60%) var(--gh, 130%) at var(--gx, 50%) var(--gy, 50%),
-      rgba(255, 200,  80, 0.18)  0%,
-      rgba(255, 200,  80, 0.06) 55%,
-      transparent               100%
+      rgba(197, 217, 51, 0.22)  0%,
+      rgba(197, 217, 51, 0.08) 55%,
+      transparent              100%
     );
     opacity: 0;
     transition: opacity var(--dur-base) var(--smooth);

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useSnackbar } from '@/components/ui/snackbar';
 import { Sparkles, Pencil, X, Check, RefreshCcw, AlertTriangle, ImagePlus, Trash2, Lightbulb } from 'lucide-react';
 import Link from 'next/link';
 import { Breadcrumb } from '@/components/Breadcrumb';
@@ -55,6 +56,7 @@ export function PromptWorkspace({
   remainingCredits,
   briefFirstEnabled = false,
 }: PromptWorkspaceProps) {
+  const snackbar = useSnackbar();
   const [selectedIds, setSelectedIds]       = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [isSubmitting, setIsSubmitting]     = useState(false);
@@ -342,11 +344,11 @@ export function PromptWorkspace({
       if (elapsed < MIN_DISPLAY_MS) {
         await new Promise((r) => setTimeout(r, MIN_DISPLAY_MS - elapsed));
       }
-      alert(`Image generation failed: ${err.message}`);
+      snackbar.show({ message: `Image generation failed: ${err.message}`, tone: 'error' });
       setIsSubmitting(false);
       setGenerateComplete(false);
     }
-  }, [selectedTemplates, session.id, product, referenceImages, templateImages, sessionRefImages, editedPrompts, editedRatios, router, isSubmitting]);
+  }, [selectedTemplates, session.id, product, referenceImages, templateImages, sessionRefImages, editedPrompts, editedRatios, router, isSubmitting, snackbar]);
 
   /* ── render ── */
   return (

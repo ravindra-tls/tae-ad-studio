@@ -457,10 +457,18 @@ export function EditPromptModal({
       const cx = r.left + r.width  / 2;   // modal center X
       const cy = r.top  + r.height / 2;   // modal center Y
 
-      // Target: top-left of the gallery content area
-      // (280px = sidebar width + some padding; 80px = header + padding)
-      const tx = 310 - cx;
-      const ty =  90 - cy;
+      // Target: the edit-arrival placeholder tile in the gallery, measured
+      // live so the card flies to where the placeholder actually renders
+      // (sidebar width/layout varies per page). Falls back to the historical
+      // top-left estimate when no tile is on screen yet.
+      const arrivalRect = document
+        .querySelector('[data-edit-arrival]')
+        ?.getBoundingClientRect();
+      const dest = arrivalRect
+        ? { x: arrivalRect.left + arrivalRect.width / 2, y: arrivalRect.top + arrivalRect.height / 2 }
+        : { x: 310, y: 90 };
+      const tx = dest.x - cx;
+      const ty = dest.y - cy;
 
       // Shell: flies to corner, shrinks, rotates
       shell.animate(

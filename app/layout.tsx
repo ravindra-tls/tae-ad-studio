@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import ButtonGlowTracker from '@/components/ButtonGlowTracker';
+import { SnackbarProvider } from '@/components/ui/snackbar';
 
 export const metadata: Metadata = {
   title: 'TAE Ad Studio',
@@ -12,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen">
         <ButtonGlowTracker />
-        {children}
+        <SnackbarProvider>{children}</SnackbarProvider>
       </body>
     </html>
   );

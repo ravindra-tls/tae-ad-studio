@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import {
   X, Plus, Trash2, Loader2, Link2, ImageIcon, FileText,
@@ -9,6 +8,7 @@ import {
   Upload, Globe, Eye, ArrowRight, Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 import { LoadingAnimations } from '@/components/loading-animations';
 import type { Product, ProductContext, Ingredient, Claim, ColorEntry } from '@/types';
 
@@ -294,7 +294,6 @@ function StepIndicator({ current }: { current: Step }) {
 
 export default function ProductSynthesizeModal({ open, onClose, onSave, existingProduct }: Props) {
   const [step, setStep] = useState<Step>('input');
-  const [mounted, setMounted] = useState(false);
 
   // Step 1 state — input sources
   const [textInput, setTextInput] = useState('');
@@ -309,8 +308,6 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
   const [draft, setDraft] = useState<SynthesizedProduct | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
 
   // Reset on open
   useEffect(() => {
@@ -494,38 +491,14 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  if (!open || !mounted) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ animation: 'overlayIn 0.2s ease both' }}
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      maxWidth="max-w-2xl"
+      className="max-h-[85vh] overflow-hidden"
+      title={existingProduct ? `Enrich: ${existingProduct.name}` : 'Add New Product'}
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div
-        className="relative w-full max-w-2xl max-h-[85vh] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ animation: 'modalIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-brand-sage/15">
-          <h2 className="text-lg font-bold text-brand-forest font-serif">
-            {existingProduct ? `Enrich: ${existingProduct.name}` : 'Add New Product'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg hover:bg-brand-cream transition-colors text-brand-slate"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
         <StepIndicator current={step} />
 
         {/* Error banner */}
@@ -615,9 +588,7 @@ export default function ProductSynthesizeModal({ open, onClose, onSave, existing
             </>
           )}
         </div>
-      </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
 

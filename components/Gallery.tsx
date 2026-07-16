@@ -6,6 +6,7 @@ import { Lightbox } from '@/components/Lightbox';
 import type { LightboxCreatorInfo } from '@/components/Lightbox';
 import { EditPromptModal } from '@/components/EditPromptModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ImageCard } from '@/components/ImageCard';
 import { SwipeView } from '@/components/SwipeView';
 import { AnalyzingImage } from '@/components/AnalyzingImage';
@@ -465,36 +466,37 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
       {/* Content */}
       {viewMode === 'swipe' ? (
         swipeQueue.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-brand-sage/30 bg-brand-cream/30 py-20 stagger-item" style={{ animationDelay: '120ms' }}>
-            <Layers2 className="h-10 w-10 text-brand-forest/20 mb-3" />
-            {filtered.length > 0 ? (
-              <>
-                <p className="text-sm font-medium text-brand-slate">You&apos;ve rated everything here!</p>
-                <p className="text-xs text-brand-slate/60 mt-1">Switch to Grid to review your ratings or clear filters to find unrated images.</p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-medium text-brand-slate">No images to swipe</p>
-                <p className="text-xs text-brand-slate/60 mt-1">
-                  {activeTab === 'starred' ? 'Star an image to see it here.' : 'Generate some ads to get started.'}
-                </p>
-              </>
-            )}
-          </div>
+          <EmptyState
+            icon={Layers2}
+            className="stagger-item"
+            style={{ animationDelay: '120ms' }}
+            title={filtered.length > 0 ? <>You&apos;ve rated everything here!</> : 'No images to swipe'}
+            subtitle={
+              filtered.length > 0
+                ? 'Switch to Grid to review your ratings or clear filters to find unrated images.'
+                : activeTab === 'starred'
+                  ? 'Star an image to see it here.'
+                  : 'Generate some ads to get started.'
+            }
+          />
         ) : (
           <SwipeView images={swipeQueue} />
         )
       ) : (
         filtered.length === 0 && editEntries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-brand-sage/30 bg-brand-cream/30 py-20 stagger-item" style={{ animationDelay: '120ms' }}>
-            <Images className="h-10 w-10 text-brand-forest/20 mb-3" />
-            <p className="text-sm font-medium text-brand-slate">
-              {activeTab === 'starred' && starredLoading ? 'Loading starred images…' : 'No images found'}
-            </p>
-            <p className="text-xs text-brand-slate/60 mt-1">
-              {activeTab === 'starred' && !starredLoading ? 'Star an image to see it here.' : activeTab !== 'starred' ? 'Generate some ads to get started.' : ''}
-            </p>
-          </div>
+          <EmptyState
+            icon={Images}
+            className="stagger-item"
+            style={{ animationDelay: '120ms' }}
+            title={activeTab === 'starred' && starredLoading ? 'Loading starred images…' : 'No images found'}
+            subtitle={
+              activeTab === 'starred' && !starredLoading
+                ? 'Star an image to see it here.'
+                : activeTab !== 'starred'
+                  ? 'Generate some ads to get started.'
+                  : undefined
+            }
+          />
         ) : (
           <>
             {/* Masonry grid */}
@@ -506,6 +508,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
                       return (
                         <div
                           key={item.entry.tempId}
+                          data-edit-arrival=""
                           className="rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden animate-edit-arrive"
                           style={{ aspectRatio: item.entry.aspectRatio.replace(':', '/') }}
                         >

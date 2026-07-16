@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ProductCard } from '@/components/ProductCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Modal } from '@/components/ui/modal';
 import { Search, Loader2, ImagePlus, X, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { compressImageToDataUrl } from '@/lib/client/compress';
@@ -126,16 +126,6 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
     setSelectedProduct(null);
     setUploadedPreviews([]);
   }, []);
-
-  // Escape key closes the upload modal
-  useEffect(() => {
-    if (!showUploadStep) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeUploadStep();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [showUploadStep, closeUploadStep]);
 
   const [finishing, setFinishing] = useState(false);
 
@@ -274,38 +264,48 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
         <div className="py-12 text-center text-brand-slate">No products match your search.</div>
       )}
 
-      {/* ── Upload step overlay (portal to body so it covers sidebar too) ── */}
-      {showUploadStep && createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
-          onClick={closeUploadStep}
-          style={{ animation: 'overlayIn 0.25s ease forwards' }}
-        >
-          <div
-            className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl flex flex-col max-h-[80vh]"
-            onClick={(e) => e.stopPropagation()}
-            style={{ animation: 'modalIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-brand-sage/20 px-6 py-4">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-base font-semibold text-brand-forest">
-                  Add Reference Images
-                </h2>
-                <p className="text-xs text-brand-slate mt-0.5">
-                  Upload product photos or inspiration for <strong>{selectedProduct?.name}</strong>. These will be available to attach to any template.
-                </p>
-              </div>
+      {/* ── Upload step modal (portalled to body so it covers sidebar too) ── */}
+      {showUploadStep && (
+        <Modal
+          open
+          onClose={closeUploadStep}
+          maxWidth="max-w-lg"
+          className="max-h-[80vh]"
+          title="Add Reference Images"
+          subtitle={
+            <>
+              Upload product photos or inspiration for <strong>{selectedProduct?.name}</strong>. These will be available to attach to any template.
+            </>
+          }
+          footer={
+            <div className="flex items-center justify-between">
               <button
-                type="button"
-                onClick={closeUploadStep}
-                className="ml-3 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-brand-slate hover:bg-brand-cream hover:text-brand-forest transition-colors"
-                aria-label="Close"
+                onClick={proceedToTemplates}
+                className="text-xs text-brand-slate hover:text-brand-forest hover:underline"
               >
-                <X className="h-4 w-4" />
+                Skip for now
               </button>
+              <Button
+                onClick={proceedToTemplates}
+                disabled={finishing}
+                className="gap-2 bg-brand-forest hover:bg-brand-forest/90 hover:scale-[1.03] active:scale-95 transition-[transform,background-color] duration-150"
+                style={{ transitionTimingFunction: 'var(--spring)' }}
+              >
+                {finishing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading references…
+                  </>
+                ) : uploadedPreviews.length > 0 ? (
+                  <>Continue with {uploadedPreviews.length} image{uploadedPreviews.length > 1 ? 's' : ''}</>
+                ) : (
+                  <>Continue without images</>
+                )}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
-
+          }
+        >
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-4">
               {/* Hidden file input */}
@@ -356,36 +356,7 @@ export function ProductSelector({ products, flow = 'templates' }: ProductSelecto
               </button>
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between border-t border-brand-sage/20 px-6 py-4">
-              <button
-                onClick={proceedToTemplates}
-                className="text-xs text-brand-slate hover:text-brand-forest hover:underline"
-              >
-                Skip for now
-              </button>
-              <Button
-                onClick={proceedToTemplates}
-                disabled={finishing}
-                className="gap-2 bg-brand-forest hover:bg-brand-forest/90 hover:scale-[1.03] active:scale-95 transition-[transform,background-color] duration-150"
-                style={{ transitionTimingFunction: 'var(--spring)' }}
-              >
-                {finishing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Uploading references…
-                  </>
-                ) : uploadedPreviews.length > 0 ? (
-                  <>Continue with {uploadedPreviews.length} image{uploadedPreviews.length > 1 ? 's' : ''}</>
-                ) : (
-                  <>Continue without images</>
-                )}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>,
-        document.body,
+        </Modal>
       )}
     </div>
   );

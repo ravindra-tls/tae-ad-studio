@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -10,6 +9,7 @@ import { compressImageToDataUrl } from '@/lib/client/compress';
 import { X, ImagePlus, ChevronRight, Loader2, Check, AlertCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Modal } from '@/components/ui/modal';
 import type { Product } from '@/types';
 
 // Only the fields needed for the product picker inside the Copy-Ad modal
@@ -262,15 +262,6 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
     return () => { if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current); };
   }, [step]);
 
-  // Escape to close
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && step !== 'loading') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [step, onClose]);
-
   // Image compression — shared util (1280px long edge, JPEG 0.85)
   const compressToDataUrl = (file: File): Promise<string> =>
     compressImageToDataUrl(file, { maxEdgePx: 1280, quality: 0.85 });
@@ -354,15 +345,14 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
     (p.brand || '').toLowerCase().includes(search.toLowerCase()),
   );
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      disableClose={step === 'loading'}
+      maxWidth="max-w-lg"
+      className="overflow-hidden"
     >
-      <div
-        className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-        style={{ maxHeight: '90vh' }}
-      >
         {/* ── Close button ── */}
         {step !== 'loading' && (
           <button
@@ -603,9 +593,7 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
             </div>
           </div>
         )}
-      </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
 
