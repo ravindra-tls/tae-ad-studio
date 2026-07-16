@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import { redirect } from 'next/navigation';
 import { createServiceClient } from '@/lib/supabase/server';
+import { requirePageAdmin } from '@/lib/auth/guards';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
@@ -89,18 +91,20 @@ export async function DashboardSummarySection() {
 }
 
 export async function DashboardMainSection() {
-  const supabase = await createServiceClient();
+  const { service: supabase, workspaceId } = await requirePageAdmin();
+  if (!workspaceId) redirect('/dev');
 
   const [
     { data: recentImages },
     { data: recentProducts },
-    { count: pendingApprovalsCount },
-    { count: pendingFeedbackCount },
-    { data: latestFeedback },
+    { count: pendingProposalsCount },
+    { data: latestProposal },
   ] = await Promise.all([
     supabase
       .from('generated_images')
-      .select('id, session_id, image_url, prompt_used, aspect_ratio, api_provider, model_id, request_id, status, error_message, created_at')
+      .select('id, session_id, image_url, prompt_used, aspect_ratio, api_provider, model_id, request_id, status, error_message, created_at, session:sessions!inner(workspace_id)')
+      .eq('session.workspace_id', workspaceId)
+      .eq('session.is_test', false)
       .eq('status', 'completed')
       .not('image_url', 'is', null)
       .order('created_at', { ascending: false })
@@ -108,13 +112,19 @@ export async function DashboardMainSection() {
     supabase
       .from('products')
       .select('id, name, brand, sub_brand, thumbnail_url')
+      .eq('workspace_id', workspaceId)
+      .is('archived_at', null)
       .order('created_at', { ascending: false })
       .limit(6),
-    supabase.from('context_contributions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabase.from('feedback_submissions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    // Workspace admins review template proposals; general feedback routes to
+    // the dev inbox (context_contributions "approvals" are retired).
+    supabase.from('feedback_submissions').select('*', { count: 'exact', head: true })
+      .eq('kind', 'template_proposal').eq('workspace_id', workspaceId).eq('status', 'pending'),
     supabase
       .from('feedback_submissions')
       .select('id, kind, title, status, created_at')
+      .eq('kind', 'template_proposal')
+      .eq('workspace_id', workspaceId)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
       .limit(1)
@@ -189,43 +199,32 @@ export async function DashboardMainSection() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle>Team Inbox</CardTitle>
-              <CardDescription>Consolidated review queue for feedback and approvals</CardDescription>
+              <CardDescription>Template proposals from your workspace awaiting review</CardDescription>
             </div>
             <MessageSquarePlus className="h-5 w-5 text-brand-forest" />
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="rounded-xl bg-brand-cream/40 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-brand-slate">Pending Feedback</p>
-                <p className="mt-2 text-3xl font-bold text-brand-teal">{pendingFeedbackCount || 0}</p>
-                <Link href="/admin/feedback" className="mt-3 inline-flex items-center gap-1 text-sm text-brand-teal hover:underline">
-                  Open feedback <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-              <div className="rounded-xl bg-brand-cream/40 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-brand-slate">Pending Approvals</p>
-                <p className="mt-2 text-3xl font-bold text-brand-teal">{pendingApprovalsCount || 0}</p>
-                <Link href="/admin/approvals" className="mt-3 inline-flex items-center gap-1 text-sm text-brand-teal hover:underline">
-                  Open approvals <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
+            <div className="rounded-xl bg-brand-cream/40 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-brand-slate">Pending Proposals</p>
+              <p className="mt-2 text-3xl font-bold text-brand-teal">{pendingProposalsCount || 0}</p>
+              <Link href="/admin/feedback" className="mt-3 inline-flex items-center gap-1 text-sm text-brand-teal hover:underline">
+                Open proposals <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
             </div>
 
             <div className="rounded-xl border border-brand-teal/10 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-brand-slate">Latest Feedback Item</p>
-              {latestFeedback ? (
+              <p className="text-xs font-medium uppercase tracking-wide text-brand-slate">Latest Proposal</p>
+              {latestProposal ? (
                 <div className="mt-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <Badge variant={latestFeedback.kind === 'feedback' ? 'outline' : 'secondary'}>
-                      {latestFeedback.kind === 'feedback' ? 'Feedback' : 'Template Proposal'}
-                    </Badge>
-                    <Badge variant="warning">{latestFeedback.status}</Badge>
+                    <Badge variant="secondary">Template Proposal</Badge>
+                    <Badge variant="warning">{latestProposal.status}</Badge>
                   </div>
-                  <p className="font-medium text-brand-forest">{latestFeedback.title}</p>
-                  <p className="text-xs text-brand-slate">{formatDate(latestFeedback.created_at)}</p>
+                  <p className="font-medium text-brand-forest">{latestProposal.title}</p>
+                  <p className="text-xs text-brand-slate">{formatDate(latestProposal.created_at)}</p>
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-brand-slate">No pending feedback right now.</p>
+                <p className="mt-3 text-sm text-brand-slate">No pending proposals right now.</p>
               )}
             </div>
           </CardContent>

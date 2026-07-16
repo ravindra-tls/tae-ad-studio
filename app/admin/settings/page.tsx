@@ -1,7 +1,12 @@
+import { redirect } from 'next/navigation';
+import { requirePageUser, isDevRole } from '@/lib/auth/guards';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-export default function AdminSettingsPage() {
+export default async function AdminSettingsPage() {
+  // Environment/settings are app-global → dev-only.
+  const ctx = await requirePageUser();
+  if (!isDevRole(ctx.profile.role)) redirect('/admin');
   return (
     <div className="animate-fade-in">
       <h1 className="mb-6 text-2xl font-bold text-brand-teal">Settings</h1>

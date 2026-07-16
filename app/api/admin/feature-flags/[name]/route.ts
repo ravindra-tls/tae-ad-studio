@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/guards';
+import { requireDev } from '@/lib/auth/guards';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: { name: string } },
 ) {
-  const ctx = await requireAdmin();
+  const ctx = await requireDev();
   if (!ctx.ok) return ctx.response;
 
   const body = await request.json();
@@ -100,7 +100,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: { name: string } },
 ) {
-  const ctx = await requireAdmin();
+  const ctx = await requireDev();
   if (!ctx.ok) return ctx.response;
 
   const { error } = await ctx.service

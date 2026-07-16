@@ -1,4 +1,5 @@
-import { createServiceClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import { requirePageUser, isDevRole } from '@/lib/auth/guards';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { NewFlagForm, FeatureFlagRow } from './feature-flag-row';
 import type { FeatureFlag, Profile } from '@/types';
@@ -7,7 +8,10 @@ import type { FeatureFlag, Profile } from '@/types';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminFeatureFlagsPage() {
-  const supabase = await createServiceClient();
+  // Feature flags are app-global → dev-only.
+  const ctx = await requirePageUser();
+  if (!isDevRole(ctx.profile.role)) redirect('/admin');
+  const supabase = ctx.service;
 
   const { data: flagsData } = await supabase
     .from('feature_flags')

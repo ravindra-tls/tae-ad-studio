@@ -1,10 +1,12 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireMember } from '@/lib/auth/guards';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Members only — the workspace stamp routes template proposals to the
+  // right admin queue (general feedback goes to the dev inbox regardless).
+  const ctx = await requireMember();
+  if (!ctx.ok) return ctx.response;
+  const { user, service: serviceClient, workspaceId } = ctx;
 
   const {
     kind,
@@ -27,11 +29,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Template name is required for template proposals' }, { status: 400 });
   }
 
-  const serviceClient = await createServiceClient();
   const { data, error } = await serviceClient
     .from('feedback_submissions')
     .insert({
       user_id: user.id,
+      workspace_id: workspaceId,
       kind,
       title: title.trim(),
       message: message.trim(),

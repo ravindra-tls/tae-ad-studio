@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/guards';
+import { requireDev } from '@/lib/auth/guards';
 
 export const dynamic = 'force-dynamic';
 
 /** GET /api/admin/feature-flags — list every flag. */
 export async function GET() {
-  const ctx = await requireAdmin();
+  const ctx = await requireDev();
   if (!ctx.ok) return ctx.response;
 
   const { data, error } = await ctx.service
@@ -19,7 +19,7 @@ export async function GET() {
 
 /** POST /api/admin/feature-flags — create a new flag. Body: { name, description? }. */
 export async function POST(request: Request) {
-  const ctx = await requireAdmin();
+  const ctx = await requireDev();
   if (!ctx.ok) return ctx.response;
 
   const { name, description } = await request.json();

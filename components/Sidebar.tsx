@@ -43,10 +43,10 @@ const ADMIN_NAV = [
   { href: '/admin/invites',        label: 'Invites',        icon: Mail },
   { href: '/admin/templates',      label: 'Templates',      icon: LayoutTemplate },
   { href: '/admin/brand',          label: 'Brand Config',   icon: Palette },
-  { href: '/admin/feature-flags',  label: 'Feature Flags',  icon: Flag },
-  { href: '/admin/feedback',       label: 'Feedback',       icon: MessageSquarePlus },
+  { href: '/admin/feature-flags',  label: 'Feature Flags',  icon: Flag, devOnly: true },
+  { href: '/admin/feedback',       label: 'Proposals',      icon: MessageSquarePlus },
   { href: '/admin/stats',          label: 'Stats',          icon: BarChart3 },
-];
+] as Array<{ href: string; label: string; icon: typeof Package; devOnly?: boolean }>;
 
 export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -167,26 +167,34 @@ export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProp
           })}
 
           {isDev && (
-            <Link
-              href="/dev"
-              title={collapsed ? 'Dev' : undefined}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-brand-forest',
-                'hover:bg-brand-forest/8 transition-all duration-150',
-                pathname.startsWith('/dev') && 'bg-brand-forest/8',
-                collapsed && 'justify-center px-0',
-              )}
-            >
-              <Terminal className="h-4 w-4 shrink-0" />
-              <span
-                className={cn(
-                  'whitespace-nowrap transition-[opacity,width] duration-200 overflow-hidden',
-                  collapsed ? 'opacity-0 w-0' : 'opacity-100',
-                )}
-              >
-                Dev · Workspaces
-              </span>
-            </Link>
+            <>
+              {[
+                { href: '/dev', label: 'Dev · Workspaces', icon: Terminal, exact: true },
+                { href: '/dev/feedback', label: 'Dev · Feedback', icon: MessageSquarePlus, exact: false },
+              ].map(({ href, label, icon: Icon, exact }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  title={collapsed ? label : undefined}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-brand-forest',
+                    'hover:bg-brand-forest/8 transition-all duration-150',
+                    (exact ? pathname === href : pathname.startsWith(href)) && 'bg-brand-forest/8',
+                    collapsed && 'justify-center px-0',
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span
+                    className={cn(
+                      'whitespace-nowrap transition-[opacity,width] duration-200 overflow-hidden',
+                      collapsed ? 'opacity-0 w-0' : 'opacity-100',
+                    )}
+                  >
+                    {label}
+                  </span>
+                </Link>
+              ))}
+            </>
           )}
 
           {isAdmin && (
@@ -216,7 +224,7 @@ export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProp
               {/* Admin sub-nav — shown expanded */}
               {!collapsed && (
                 <div className="ml-3 pl-3 border-l border-brand-wine/20 flex flex-col gap-0.5">
-                  {ADMIN_NAV.map(({ href, label, icon: Icon }) => {
+                  {ADMIN_NAV.filter((i) => !i.devOnly || isDev).map(({ href, label, icon: Icon }) => {
                     const active = pathname.startsWith(href);
                     return (
                       <Link
@@ -240,7 +248,7 @@ export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProp
               {/* Collapsed: icon-only sub-nav */}
               {collapsed && (
                 <>
-                  {ADMIN_NAV.map(({ href, label, icon: Icon }) => (
+                  {ADMIN_NAV.filter((i) => !i.devOnly || isDev).map(({ href, label, icon: Icon }) => (
                     <Link
                       key={href}
                       href={href}
