@@ -1,4 +1,5 @@
-import { createServiceClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import { requirePageAdmin } from '@/lib/auth/guards';
 import { ProductContextViewer } from './product-context-viewer';
 import type { ProductDeckRow } from './forge-deck-panel';
 import type { Product } from '@/types';
@@ -20,10 +21,12 @@ export type ResearchRow = {
 };
 
 export default async function AdminProductsPage() {
-  const supabase = await createServiceClient();
+  const { service: supabase, workspaceId } = await requirePageAdmin();
+  if (!workspaceId) redirect('/dev'); // dev without an acting workspace
 
   const [{ data: products }, { data: researchRows }, { data: deckRows }] = await Promise.all([
-    supabase.from('products').select('*').order('brand'),
+    supabase.from('products').select('*')
+      .eq('workspace_id', workspaceId).is('archived_at', null).order('brand'),
     supabase.from('positioning_research').select('*').eq('is_active', true),
     supabase.from('product_decks').select('product_id, deck, overrides, source_hash, model_id, distilled_at'),
   ]);

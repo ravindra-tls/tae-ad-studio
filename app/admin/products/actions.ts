@@ -138,11 +138,13 @@ export type ProductCreatePayload = {
 };
 
 export async function createProduct(data: ProductCreatePayload) {
-  const { service: supabase } = await assertAdmin();
+  const { service: supabase, workspaceId } = await assertAdmin();
+  if (!workspaceId) throw new Error('No workspace selected');
 
   const { data: product, error } = await supabase
     .from('products')
     .insert({
+      workspace_id:      workspaceId,
       name:              data.name,
       brand:             data.brand,
       sub_brand:         data.sub_brand || null,
@@ -166,12 +168,17 @@ export async function createProduct(data: ProductCreatePayload) {
 }
 
 export async function deleteProduct(id: string) {
-  const { service: supabase } = await assertAdmin();
+  const { service: supabase, workspaceId } = await assertAdmin();
+  if (!workspaceId) throw new Error('No workspace selected');
 
+  // Soft delete (archive) — a hard DELETE cascades to sessions.product_id and
+  // would destroy this workspace's gallery images. Scoped to the caller's
+  // workspace so an admin can only archive their own products.
   const { error } = await supabase
     .from('products')
-    .delete()
-    .eq('id', id);
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('workspace_id', workspaceId);
 
   if (error) throw new Error(error.message);
 

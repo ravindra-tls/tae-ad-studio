@@ -1,5 +1,5 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { requirePageMember } from '@/lib/auth/guards';
 import { ProductSelector } from './product-selector';
 import { Breadcrumb } from '@/components/Breadcrumb';
 
@@ -8,28 +8,22 @@ export default async function NewSessionPage({
 }: {
   searchParams?: { flow?: string };
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const { profile, service: serviceClient, workspaceId } = await requirePageMember();
+  if (!workspaceId) redirect('/dev'); // dev without an acting workspace
 
   const flow = searchParams?.flow === 'brief' ? 'brief' : 'templates';
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('usage_count, usage_cap')
-    .eq('id', user.id)
-    .single();
-
-  // Use service client to bypass RLS for global product data
-  const serviceClient = await createServiceClient();
+  // Products are workspace-private; exclude archived.
   const { data: products, error: productsError } = await serviceClient
     .from('products')
     .select('*')
+    .eq('workspace_id', workspaceId)
+    .is('archived_at', null)
     .order('brand', { ascending: true });
 
   if (productsError) console.error('Products fetch error:', productsError);
 
-  const remaining = Math.max(0, (profile?.usage_cap || 30) - (profile?.usage_count || 0));
+  const remaining = Math.max(0, (profile.usage_cap || 30) - (profile.usage_count || 0));
 
   const pageTitle = flow === 'brief' ? 'Start with a Brief' : 'Use a Template';
   const pageDesc  = flow === 'brief'
