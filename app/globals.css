@@ -475,46 +475,17 @@
 }
 .tae-card-hover:hover .tae-prompt-btn { transform: translateY(0); }
 
-/* ── Modal launch — shell (outer wrapper, no overflow constraints) ────────── */
-/*    Handles spatial movement: fly to top-left corner + scale down.          */
-/*    Separated from the panel so overflow:hidden never kills the transform.  */
-@keyframes modal-launch {
-  0%   {
-    transform: scale(1) translate(0, 0) rotate(0deg);
-    opacity:   1;
-  }
-  12%  {
-    /* wind-up: tiny pullback + slight tilt before it shoots */
-    transform: scale(0.93) translate(-1.5vw, -2vh) rotate(-4deg);
-    opacity:   1;
-  }
-  35%  {
-    transform: scale(0.55) translate(-14vw, -18vh) rotate(-14deg);
-    opacity:   0.95;
-  }
-  65%  {
-    transform: scale(0.22) translate(-30vw, -36vh) rotate(-28deg);
-    opacity:   0.7;
-  }
-  85%  {
-    transform: scale(0.09) translate(-40vw, -45vh) rotate(-40deg);
-    opacity:   0.3;
-  }
-  100% {
-    transform: scale(0.05) translate(-44vw, -49vh) rotate(-48deg);
-    opacity:   0;
-  }
-}
+/* (modal-launch / modal-panel-flip keyframes removed — dead code. EditPromptModal
+   re-implemented the launch morph with WAAPI because inline CSS animation names
+   silently drop on portalled elements in this app.) */
 
-/* ── Modal panel flip — applied to the inner panel (has overflow:hidden) ─── */
-/*    Only rotates — no translate/scale so overflow:hidden has no side-effect */
-@keyframes modal-panel-flip {
-  0%   { transform: rotateY(0deg)   scaleX(1); }
-  18%  { transform: rotateY(-22deg) scaleX(0.97); }
-  42%  { transform: rotateY(-95deg) scaleX(0.1);  }   /* edge-on: card disappears */
-  58%  { transform: rotateY(-160deg) scaleX(0.1); }
-  80%  { transform: rotateY(-260deg) scaleX(0.5); }
-  100% { transform: rotateY(-340deg) scaleX(0.05); }
+/* ── Dropdown entrance (Radix Select/Popover content) ─────────────────────── */
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-dropdown-in {
+  animation: dropdown-in 0.16s cubic-bezier(0.25, 1.2, 0.5, 1) both;
 }
 
 /* ── Edit placeholder arrive — springs in from same top-left origin ─────── */

@@ -1,13 +1,15 @@
 'use client';
 
-import { useCallback } from 'react';
+import { Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { LoadingExperience } from '@/components/LoadingExperience';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { SkipForward } from 'lucide-react';
 
-export default function GeneratePage({ params }: { params: { id: string } }) {
+// useSearchParams must live under a Suspense boundary in Next 14 —
+// without it the whole route bails out to client-side rendering at build.
+function GenerateContent({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const imageId = searchParams.get('imageId');
@@ -20,24 +22,24 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
 
     if (data.status === 'completed' || data.status === 'failed' || data.status === 'nsfw') {
       setTimeout(() => {
-        router.push(`/session/${params.id}/results`);
+        router.push(`/session/${sessionId}/results`);
       }, 1000);
     }
 
     return data;
-  }, [imageId, params.id, router]);
+  }, [imageId, sessionId, router]);
 
   return (
     <div className="animate-fade-in">
 
       <Breadcrumb
         crumbs={[
-          { label: 'Templates', href: `/session/${params.id}/prompts` },
+          { label: 'Templates', href: `/session/${sessionId}/prompts` },
           { label: 'Generating…' },
         ]}
         actions={
           <Link
-            href={`/session/${params.id}/results`}
+            href={`/session/${sessionId}/results`}
             className="flex items-center gap-1.5 rounded-md border border-brand-sage/30 bg-white px-2.5 py-1 text-xs text-brand-slate transition-colors hover:border-brand-forest/40 hover:text-brand-forest hover:bg-brand-cream"
           >
             <SkipForward className="h-3 w-3" />
@@ -52,5 +54,13 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
         pollIntervalMs={2500}
       />
     </div>
+  );
+}
+
+export default function GeneratePage({ params }: { params: { id: string } }) {
+  return (
+    <Suspense fallback={null}>
+      <GenerateContent sessionId={params.id} />
+    </Suspense>
   );
 }

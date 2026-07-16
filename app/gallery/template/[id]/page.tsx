@@ -47,7 +47,7 @@ export default async function TemplateGalleryPage({
     .eq('id', params.id)
     .single();
 
-  if (!template) redirect('/admin/templates');
+  if (!template) redirect('/gallery');
 
   const t = template as Pick<PromptTemplate, 'id' | 'name' | 'category' | 'number' | 'default_aspect_ratio'>;
 
@@ -116,11 +116,11 @@ export default async function TemplateGalleryPage({
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="mb-6 flex items-start gap-4">
         <Link
-          href="/admin/templates"
+          href="/gallery"
           className="mt-0.5 flex items-center gap-1.5 text-sm text-brand-slate hover:text-brand-forest transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Templates
+          Gallery
         </Link>
 
         <div className="flex-1 min-w-0">
@@ -149,10 +149,10 @@ export default async function TemplateGalleryPage({
             No images have been generated with this template yet.
           </p>
           <Link
-            href="/admin/templates"
-            className="mt-4 text-sm font-medium text-brand-teal hover:underline"
+            href="/gallery"
+            className="mt-4 text-sm font-medium text-brand-forest hover:underline"
           >
-            Back to templates
+            Back to gallery
           </Link>
         </div>
       ) : (

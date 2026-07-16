@@ -97,9 +97,13 @@ export function SwipeView({ images }: SwipeViewProps) {
   const startYRef  = useRef(0);
   const isDragRef  = useRef(false);
 
-  // ── Intro hint sequence ────────────────────────────────────────────────────
+  // ── Intro hint sequence — plays once per device, then remembered ──────────
   useEffect(() => {
-    if (images.length === 0) { setHintPhase('done'); return; }
+    const HINT_SEEN_KEY = 'tae-swipe-hint-seen';
+    let seen = false;
+    try { seen = localStorage.getItem(HINT_SEEN_KEY) === '1'; } catch { /* private mode */ }
+    if (images.length === 0 || seen) { setHintPhase('done'); return; }
+    try { localStorage.setItem(HINT_SEEN_KEY, '1'); } catch { /* private mode */ }
     const ts = [
       setTimeout(() => setHintPhase('press-r'),   500),
       setTimeout(() => setHintPhase('drag-r'),     820),
