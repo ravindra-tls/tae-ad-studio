@@ -206,3 +206,11 @@ export async function requirePageMember(): Promise<AuthOk> {
   if (!ctx.workspaceId && ctx.profile.role !== 'dev') redirect('/pending');
   return ctx;
 }
+
+/** Page gate for the dev area. Non-devs are bounced to their dashboard. */
+export async function requirePageDev(): Promise<AuthOk> {
+  const ctx = await requireUser();
+  if (!ctx.ok) redirect('/login');
+  if (!isDevRole(ctx.profile.role)) redirect('/dashboard');
+  return ctx;
+}

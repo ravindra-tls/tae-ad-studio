@@ -20,6 +20,7 @@ import {
   Flag,
   LayoutTemplate,
   Mail,
+  Terminal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,7 @@ interface SidebarProps {
   fullName:  string | null;
   email:     string | null;
   isAdmin:   boolean;
+  isDev?:    boolean;
 }
 
 const NAV = [
@@ -46,7 +48,7 @@ const ADMIN_NAV = [
   { href: '/admin/stats',          label: 'Stats',          icon: BarChart3 },
 ];
 
-export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
+export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
@@ -163,6 +165,29 @@ export function Sidebar({ fullName, email, isAdmin }: SidebarProps) {
               </Link>
             );
           })}
+
+          {isDev && (
+            <Link
+              href="/dev"
+              title={collapsed ? 'Dev' : undefined}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-brand-forest',
+                'hover:bg-brand-forest/8 transition-all duration-150',
+                pathname.startsWith('/dev') && 'bg-brand-forest/8',
+                collapsed && 'justify-center px-0',
+              )}
+            >
+              <Terminal className="h-4 w-4 shrink-0" />
+              <span
+                className={cn(
+                  'whitespace-nowrap transition-[opacity,width] duration-200 overflow-hidden',
+                  collapsed ? 'opacity-0 w-0' : 'opacity-100',
+                )}
+              >
+                Dev · Workspaces
+              </span>
+            </Link>
+          )}
 
           {isAdmin && (
             <>

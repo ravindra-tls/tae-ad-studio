@@ -1,4 +1,4 @@
-import { requirePageMember, isAdminRole } from '@/lib/auth/guards';
+import { requirePageMember, isAdminRole, isDevRole } from '@/lib/auth/guards';
 import { AppLayout } from '@/components/AppLayout';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -9,6 +9,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       fullName={profile.full_name ?? null}
       email={profile.email ?? null}
       isAdmin={isAdminRole(profile.role)}
+      isDev={isDevRole(profile.role)}
     >
       {children}
     </AppLayout>
