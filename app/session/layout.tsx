@@ -1,14 +1,14 @@
-import { getProfile } from '@/lib/get-profile';
+import { requirePageMember, isAdminRole } from '@/lib/auth/guards';
 import { AppLayout } from '@/components/AppLayout';
 
 export default async function SessionLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfile();
+  const { profile } = await requirePageMember();
 
   return (
     <AppLayout
-      fullName={profile?.full_name ?? null}
-      email={profile?.email ?? null}
-      isAdmin={profile?.role === 'admin'}
+      fullName={profile.full_name ?? null}
+      email={profile.email ?? null}
+      isAdmin={isAdminRole(profile.role)}
     >
       {children}
     </AppLayout>

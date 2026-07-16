@@ -31,10 +31,12 @@ export default async function DashboardPage({
   await pruneEmptySessions(serviceClient, user.id);
 
   // ── Fetch the (now-clean) session list ───────────────────────
+  // is_test = admin template-test sessions; never shown in the dashboard.
   const { data: sessions } = await serviceClient
     .from('sessions')
     .select('*, product:products(name, brand, sub_brand, thumbnail_url)')
     .eq('user_id', user.id)
+    .eq('is_test', false)
     .order('created_at', { ascending: false });
 
   const sessionIds = (sessions || []).map((session: any) => session.id);

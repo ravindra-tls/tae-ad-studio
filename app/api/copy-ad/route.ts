@@ -14,7 +14,7 @@
  *
  * Products limited only by the user's remaining usage cap (each generates one image = 1 credit).
  */
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireMember } from '@/lib/auth/guards';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
@@ -82,21 +82,10 @@ function parseSkillOutput(raw: string): ParsedTemplate | null {
 export const maxDuration = 300; // 5-minute timeout for Vercel Pro/Enterprise
 
 export async function POST(request: Request) {
-  // ── Auth ──
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const service = await createServiceClient();
-
-  // ── Usage cap check ──
-  const { data: profile } = await service
-    .from('profiles')
-    .select('usage_count, usage_cap')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+  // ── Auth (workspace member) ──
+  const ctx = await requireMember();
+  if (!ctx.ok) return ctx.response;
+  const { user, service, profile, workspaceId } = ctx;
 
   // ── Parse body ──
   const body = await request.json() as {
@@ -209,14 +198,22 @@ export async function POST(request: Request) {
     refResults.push({ template: tmpl, referenceImageUrl });
   }
 
-  // ── 3. Fetch products ──
+  // ── 3. Fetch products (scoped to the caller's workspace) ──
   const { data: products, error: prodErr } = await service
     .from('products')
     .select('*, product_images(*)')
-    .in('id', productIds);
+    .in('id', productIds)
+    .eq('workspace_id', workspaceId);
 
   if (prodErr || !products?.length) {
     return NextResponse.json({ error: 'Could not fetch products' }, { status: 404 });
+  }
+
+  // Every requested product must belong to this workspace; a missing one means
+  // the caller referenced a product outside their workspace.
+  const foundIds = new Set(products.map((p) => p.id));
+  if (productIds.some((id) => !foundIds.has(id))) {
+    return NextResponse.json({ error: 'Product not found' }, { status: 404 });
   }
 
   // Preserve caller's order
@@ -246,6 +243,7 @@ export async function POST(request: Request) {
         source:              'copy_ad',
         reference_image_url: refUrl,
         copy_ad_group_id:    groupId,
+        workspace_id:        workspaceId,
       })
       .select('id')
       .single();

@@ -1,5 +1,5 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { requirePageMember } from '@/lib/auth/guards';
 import { AppLayout } from '@/components/AppLayout';
 import { Gallery } from '@/components/Gallery';
 import type { GalleryImage } from '@/types';
@@ -18,46 +18,45 @@ function getInitials(name: string): string {
 }
 
 export default async function GalleryPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const ctx = await requirePageMember();
+  if (!ctx.workspaceId) redirect('/dev');
+  const { user, profile, service, workspaceId } = ctx;
 
-  const serviceClient = await createServiceClient();
-
-  const { data: profile } = await serviceClient
-    .from('profiles')
-    .select('role, full_name, email')
-    .eq('id', user.id)
-    .single();
-
-  // Fetch image IDs this user has already reacted to — used to skip them in swipe mode
-  const { data: ratedRows } = await serviceClient
+  // Fetch image IDs this user has already reacted to — used to skip them in swipe mode.
+  // Keyed by user_id (per-viewer), so it needs no workspace scope — the image list it
+  // filters against is already workspace-scoped below.
+  const { data: ratedRows } = await service
     .from('image_reactions')
     .select('image_id')
     .eq('user_id', user.id);
 
   const ratedImageIds = new Set((ratedRows ?? []).map((r: any) => r.image_id as string));
 
-  // Real total count (head-only, no data transfer)
-  const { count } = await serviceClient
+  // Real total count (head-only, no data transfer) — scoped to the acting workspace
+  const { count } = await service
     .from('generated_images')
-    .select('id', { count: 'exact', head: true })
+    .select('id, session:sessions!inner(workspace_id)', { count: 'exact', head: true })
+    .eq('session.workspace_id', workspaceId)
+    .eq('session.is_test', false)
     .eq('status', 'completed')
     .not('image_url', 'is', null);
 
   const totalCount = count ?? 0;
 
-  // First page — SSR initial data for instant first paint
-  const { data: rawImages } = await serviceClient
+  // First page — SSR initial data for instant first paint, scoped to the acting workspace
+  const { data: rawImages } = await service
     .from('generated_images')
     .select(`
       *,
-      session:sessions(
+      session:sessions!inner(
+        workspace_id,
         user_id,
         product:products(id, name, sub_brand, thumbnail_url),
         profile:profiles(full_name, email)
       )
     `)
+    .eq('session.workspace_id', workspaceId)
+    .eq('session.is_test', false)
     .eq('status', 'completed')
     .not('image_url', 'is', null)
     .order('created_at', { ascending: false })
@@ -86,9 +85,9 @@ export default async function GalleryPage() {
 
   return (
     <AppLayout
-      fullName={profile?.full_name ?? null}
-      email={profile?.email ?? user.email ?? null}
-      isAdmin={profile?.role === 'admin'}
+      fullName={profile.full_name ?? null}
+      email={profile.email ?? user.email ?? null}
+      isAdmin={profile.role === 'admin'}
     >
       <Gallery
         initialImages={initialImages}

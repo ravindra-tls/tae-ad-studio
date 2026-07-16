@@ -612,8 +612,16 @@ async function loadSources(service: SupabaseClient, productId: string): Promise<
     .from('products').select('*').eq('id', productId).single();
   if (prodErr || !product) throw new Error(`Product ${productId} not found: ${prodErr?.message ?? 'missing'}`);
 
+  const workspaceId = (product as Product & { workspace_id?: string | null }).workspace_id ?? null;
+
   const [{ data: brandConfig }, { data: researchRow }] = await Promise.all([
-    service.from('brand_config').select('*').eq('id', 1).maybeSingle(),
+    // Per-workspace brand config (was the id=1 singleton). For the default
+    // workspace this returns the same row, so computeSourceHash is unchanged.
+    workspaceId
+      ? service.from('brand_config').select('*').eq('workspace_id', workspaceId).maybeSingle()
+      : service.from('brand_config').select('*').eq('id', 1).maybeSingle(),
+    // positioning_research still joined by product name (the product_id switch
+    // is gated on a zero-unmatched backfill — 1 row is currently unmatched).
     service
       .from('positioning_research')
       .select('research')

@@ -1,15 +1,15 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireMember } from '@/lib/auth/guards';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const ctx = await requireMember();
+  if (!ctx.ok) return ctx.response;
 
-  const serviceClient = await createServiceClient();
-  const { data, error } = await serviceClient
+  const { data, error } = await ctx.service
     .from('products')
     .select('*, product_images(*)')
+    .eq('workspace_id', ctx.workspaceId)
+    .is('archived_at', null)
     .order('brand');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

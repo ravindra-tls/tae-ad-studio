@@ -6,8 +6,8 @@
  * scoped to a single template and headed by the template name.
  */
 
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { redirect }    from 'next/navigation';
+import { requirePageMember } from '@/lib/auth/guards';
 import { AppLayout }   from '@/components/AppLayout';
 import { Gallery }     from '@/components/Gallery';
 import Link            from 'next/link';
@@ -27,18 +27,9 @@ export default async function TemplateGalleryPage({
 }: {
   params: { id: string };
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-
-  const service = await createServiceClient();
-
-  // ── Profile ──────────────────────────────────────────────────────────────
-  const { data: profile } = await service
-    .from('profiles')
-    .select('role, full_name, email')
-    .eq('id', user.id)
-    .single();
+  const ctx = await requirePageMember();
+  if (!ctx.workspaceId) redirect('/dev');
+  const { user, profile, service, workspaceId } = ctx;
 
   // ── Template metadata ─────────────────────────────────────────────────────
   const { data: template } = await service
@@ -62,7 +53,9 @@ export default async function TemplateGalleryPage({
   // ── Total count scoped to this template ───────────────────────────────────
   const { count } = await service
     .from('generated_images')
-    .select('id', { count: 'exact', head: true })
+    .select('id, session:sessions!inner(workspace_id)', { count: 'exact', head: true })
+    .eq('session.workspace_id', workspaceId)
+    .eq('session.is_test', false)
     .eq('template_id', params.id)
     .eq('status', 'completed')
     .not('image_url', 'is', null);
@@ -74,12 +67,15 @@ export default async function TemplateGalleryPage({
     .from('generated_images')
     .select(`
       *,
-      session:sessions(
+      session:sessions!inner(
+        workspace_id,
         user_id,
         product:products(id, name, sub_brand, thumbnail_url),
         profile:profiles(full_name, email)
       )
     `)
+    .eq('session.workspace_id', workspaceId)
+    .eq('session.is_test', false)
     .eq('template_id', params.id)
     .eq('status', 'completed')
     .not('image_url', 'is', null)
@@ -109,9 +105,9 @@ export default async function TemplateGalleryPage({
 
   return (
     <AppLayout
-      fullName={profile?.full_name ?? null}
-      email={profile?.email ?? user.email ?? null}
-      isAdmin={profile?.role === 'admin'}
+      fullName={profile.full_name ?? null}
+      email={profile.email ?? user.email ?? null}
+      isAdmin={profile.role === 'admin'}
     >
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="mb-6 flex items-start gap-4">

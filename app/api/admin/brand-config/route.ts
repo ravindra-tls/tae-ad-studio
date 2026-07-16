@@ -19,6 +19,7 @@ export const dynamic = 'force-dynamic';
 export async function PATCH(request: Request) {
   const ctx = await requireAdmin();
   if (!ctx.ok) return ctx.response;
+  if (!ctx.workspaceId) return NextResponse.json({ error: 'No workspace selected' }, { status: 400 });
 
   const body = await request.json();
   const patch: Record<string, unknown> = { updated_by: ctx.user.id };
@@ -74,7 +75,7 @@ export async function PATCH(request: Request) {
   const { data, error } = await ctx.service
     .from('brand_config')
     .update(patch)
-    .eq('id', 1)
+    .eq('workspace_id', ctx.workspaceId)
     .select()
     .single();
 

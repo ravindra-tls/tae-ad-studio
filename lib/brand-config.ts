@@ -1,14 +1,12 @@
 /**
- * Server-side brand configuration access.
+ * Server-side brand configuration access — now PER-WORKSPACE.
  *
- * One row, id = 1. Seeded by migration 008 so reads never return null
- * in a healthy environment.
+ * One row per workspace (migration 021 dropped the CHECK(id=1) singleton).
+ * Callers must pass the acting workspace id. Writes happen through
+ * /api/admin/brand-config (workspace-admin only).
  *
- * The pipeline calls `getBrandConfig()` at stage boundaries (brief,
- * concept, copy, critique) to pass voice/visual/non-negotiables into
- * the LLM prompts.
- *
- * Writes happen through /api/admin/brand-config (admin-only).
+ * The pipeline calls `getBrandConfig(workspaceId)` at stage boundaries to
+ * pass voice/visual/non-negotiables into the LLM prompts.
  */
 
 import { createServiceClient } from '@/lib/supabase/server';
@@ -21,18 +19,18 @@ export type BrandConfigResult =
 /**
  * Strict loader that distinguishes:
  *   - table_missing: migration 008 hasn't run yet
- *   - row_missing:   table exists but no id=1 row (migration seed didn't run)
+ *   - row_missing:   table exists but no row for this workspace
  *   - error:         any other Postgres/network failure
  *
  * Prefer this inside admin pages so we can surface a specific fix to the
  * operator.
  */
-export async function getBrandConfigStrict(): Promise<BrandConfigResult> {
+export async function getBrandConfigStrict(workspaceId: string): Promise<BrandConfigResult> {
   const supabase = await createServiceClient();
   const { data, error } = await supabase
     .from('brand_config')
     .select('*')
-    .eq('id', 1)
+    .eq('workspace_id', workspaceId)
     .maybeSingle();
 
   if (error) {
@@ -45,7 +43,7 @@ export async function getBrandConfigStrict(): Promise<BrandConfigResult> {
     return { ok: false, reason: 'error', message: error.message };
   }
 
-  if (!data) return { ok: false, reason: 'row_missing', message: 'No row with id=1' };
+  if (!data) return { ok: false, reason: 'row_missing', message: `No brand_config for workspace ${workspaceId}` };
   return { ok: true, config: data as BrandConfig };
 }
 
@@ -54,7 +52,7 @@ export async function getBrandConfigStrict(): Promise<BrandConfigResult> {
  * Swallows all errors — callers that need to distinguish failure modes
  * should use `getBrandConfigStrict` instead.
  */
-export async function getBrandConfig(): Promise<BrandConfig | null> {
-  const result = await getBrandConfigStrict();
+export async function getBrandConfig(workspaceId: string): Promise<BrandConfig | null> {
+  const result = await getBrandConfigStrict(workspaceId);
   return result.ok ? result.config : null;
 }

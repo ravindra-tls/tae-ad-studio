@@ -9,7 +9,7 @@ export async function getProfile() {
   const serviceClient = await createServiceClient();
   const { data: profile } = await serviceClient
     .from('profiles')
-    .select('full_name, email, role')
+    .select('id, full_name, email, role, workspace_id')
     .eq('id', user.id)
     .single();
 

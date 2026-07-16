@@ -1,12 +1,16 @@
+import { redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { getBrandConfigStrict } from '@/lib/brand-config';
+import { requirePageAdmin } from '@/lib/auth/guards';
 import { BrandConfigForm } from './brand-config-form';
 
 // Brand config changes are rare but admins expect the edit to reflect immediately.
 export const dynamic = 'force-dynamic';
 
 export default async function AdminBrandPage() {
-  const result = await getBrandConfigStrict();
+  const { workspaceId } = await requirePageAdmin();
+  if (!workspaceId) redirect('/dev'); // dev without an acting workspace
+  const result = await getBrandConfigStrict(workspaceId);
 
   if (!result.ok) {
     const copy =

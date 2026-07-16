@@ -375,7 +375,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-brand-forest">Gallery</h1>
-            <p className="mt-1 text-sm text-brand-slate">All generated ad images across the workspace.</p>
+            <p className="mt-1 text-sm text-brand-slate">Every ad image generated in your workspace.</p>
           </div>
           <span className="text-xs text-brand-slate bg-brand-cream px-3 py-1.5 rounded-full border border-brand-sage/20 self-start mt-1">
             {totalCount.toLocaleString()} image{totalCount !== 1 ? 's' : ''}

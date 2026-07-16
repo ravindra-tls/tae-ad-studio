@@ -5,27 +5,18 @@
  * Provider + model are derived from IMAGE_PROVIDER env var (default: openai),
  * so switching is a single env-var flip — no code changes needed.
  */
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireMember } from '@/lib/auth/guards';
 import { getGeneratedFileExtension, imageProvider } from '@/lib/image-providers';
 import { compositeMaskedEdit } from '@/lib/image-providers/composite';
 import { assemblePrompt, aiEnrichPrompt } from '@/lib/prompt-assembler';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const serviceClient = await createServiceClient();
+  const ctx = await requireMember();
+  if (!ctx.ok) return ctx.response;
+  const { user, service: serviceClient, profile, workspaceId } = ctx;
 
   // 1. Check usage cap
-  const { data: profile } = await serviceClient
-    .from('profiles')
-    .select('usage_count, usage_cap')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
   if (profile.usage_count >= profile.usage_cap) {
     return NextResponse.json(
@@ -49,16 +40,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
   }
 
-  // 3. Verify the session belongs to this user (service client bypasses RLS,
-  //    so we must enforce ownership manually before writing to it).
+  // 3. Verify the session belongs to this user AND this workspace (service
+  //    client bypasses RLS, so we enforce ownership manually before writing).
   const { data: sessionRow } = await serviceClient
     .from('sessions')
-    .select('id')
+    .select('id, workspace_id')
     .eq('id', sessionId)
     .eq('user_id', user.id)
     .single();
 
-  if (!sessionRow) {
+  if (!sessionRow || sessionRow.workspace_id !== workspaceId) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   }
 

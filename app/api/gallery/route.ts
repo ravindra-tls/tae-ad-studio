@@ -1,5 +1,5 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { requireMember } from '@/lib/auth/guards';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,12 +36,11 @@ function mapImages(rawImages: any[]) {
 }
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const ctx = await requireMember();
+  if (!ctx.ok) return ctx.response;
+  const { service, workspaceId } = ctx;
 
-  const service = await createServiceClient();
-  const url     = new URL(request.url);
+  const url = new URL(request.url);
 
   // ── Starred mode: fetch specific image IDs only ──────────────────────────
   // ?ids=uuid1,uuid2,... fetches exactly those images, no pagination.
@@ -55,13 +54,16 @@ export async function GET(request: Request) {
       .from('generated_images')
       .select(`
         *,
-        session:sessions(
+        session:sessions!inner(
+          workspace_id,
           user_id,
           product:products(id, name, sub_brand, thumbnail_url),
           profile:profiles(full_name, email)
         )
       `)
       .in('id', ids)
+      .eq('session.workspace_id', workspaceId)
+      .eq('session.is_test', false)
       .eq('status', 'completed')
       .not('image_url', 'is', null)
       .order('created_at', { ascending: false });
@@ -78,7 +80,9 @@ export async function GET(request: Request) {
     // This avoids needing a raw-SQL RPC just for a small workspace-level list.
     const { data: rows, error: prodErr } = await service
       .from('generated_images')
-      .select('session:sessions!inner(product:products!inner(id, name, sub_brand))')
+      .select('session:sessions!inner(workspace_id, product:products!inner(id, name, sub_brand))')
+      .eq('session.workspace_id', workspaceId)
+      .eq('session.is_test', false)
       .eq('status', 'completed')
       .not('image_url', 'is', null)
       .limit(2000);
@@ -112,14 +116,19 @@ export async function GET(request: Request) {
     const { data: sessionRows } = await service
       .from('sessions')
       .select('id')
-      .eq('product_id', productId);
+      .eq('product_id', productId)
+      .eq('workspace_id', workspaceId);
     sessionIds = (sessionRows ?? []).map((s: any) => s.id as string);
   }
 
   // Build base query — optionally scoped to a template and/or product
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const baseQuery = (q: any) => {
-    let chain = q.eq('status', 'completed').not('image_url', 'is', null);
+    let chain = q
+      .eq('status', 'completed')
+      .not('image_url', 'is', null)
+      .eq('session.workspace_id', workspaceId)
+      .eq('session.is_test', false);
     if (templateId) chain = chain.eq('template_id', templateId);
     if (sessionIds !== null) {
       // Empty session list → guaranteed no results (avoids full-table scan)
@@ -132,7 +141,7 @@ export async function GET(request: Request) {
 
   // Real total count (head-only query — no data transfer)
   const { count } = await baseQuery(
-    service.from('generated_images').select('id', { count: 'exact', head: true })
+    service.from('generated_images').select('id, session:sessions!inner(workspace_id)', { count: 'exact', head: true })
   );
 
   const total = count ?? 0;
@@ -141,7 +150,8 @@ export async function GET(request: Request) {
   const { data: rawImages, error } = await baseQuery(
     service.from('generated_images').select(`
       *,
-      session:sessions(
+      session:sessions!inner(
+        workspace_id,
         user_id,
         product:products(id, name, sub_brand, thumbnail_url),
         profile:profiles(full_name, email)

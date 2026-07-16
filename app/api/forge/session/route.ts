@@ -10,7 +10,8 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requireUser, jsonError, forgeErrorResponse, taxonomiesPayload } from '@/lib/forge/route-helpers';
+import { requireMember } from '@/lib/auth/guards';
+import { jsonError, forgeErrorResponse, taxonomiesPayload } from '@/lib/forge/route-helpers';
 import { getOrBuildDeck } from '@/lib/forge/deck';
 import { emptyState } from '@/lib/forge/state-ops';
 import { sessionView } from '@/lib/forge/state';
@@ -24,9 +25,9 @@ const RequestBody = z.object({
 });
 
 export async function POST(request: Request) {
-  const auth = await requireUser();
+  const auth = await requireMember();
   if (!auth.ok) return auth.response;
-  const { user, service } = auth;
+  const { user, service, workspaceId } = auth;
 
   let body: z.infer<typeof RequestBody>;
   try {
@@ -38,10 +39,12 @@ export async function POST(request: Request) {
   try {
     const { data: product, error: prodErr } = await service
       .from('products')
-      .select('id, name')
+      .select('id, name, workspace_id')
       .eq('id', body.productId)
       .maybeSingle();
-    if (prodErr || !product) return jsonError(404, 'Product not found');
+    if (prodErr || !product || product.workspace_id !== workspaceId) {
+      return jsonError(404, 'Product not found');
+    }
 
     // Session row.
     const sessionName = `${product.name} — Forge · ${new Date().toLocaleDateString()}`;
@@ -52,6 +55,7 @@ export async function POST(request: Request) {
         product_id: product.id,
         name: sessionName,
         source: 'forge',
+        workspace_id: workspaceId,
       })
       .select('id, user_id, product_id, name, status, source')
       .single();

@@ -18,7 +18,8 @@ import type { Product, ProductImage } from '@/types';
 export async function POST(request: Request) {
   const ctx = await requireAdmin();
   if (!ctx.ok) return ctx.response;
-  const { user, service } = ctx;
+  const { user, service, workspaceId } = ctx;
+  if (!workspaceId) return NextResponse.json({ error: 'No workspace selected' }, { status: 400 });
 
   const body = await request.json() as { templateId: string };
   const { templateId } = body;
@@ -31,9 +32,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Template not found' }, { status: 404 });
   }
 
-  // Fetch products (with images), pick 3 at random
+  // Fetch products (with images) IN THIS WORKSPACE, pick 3 at random
   const { data: allProducts, error: prodErr } = await service
-    .from('products').select('*, product_images(*)').limit(50);
+    .from('products').select('*, product_images(*)')
+    .eq('workspace_id', workspaceId).is('archived_at', null).limit(50);
   if (prodErr || !allProducts?.length) {
     return NextResponse.json({ error: 'No products found' }, { status: 404 });
   }
@@ -55,9 +57,11 @@ export async function POST(request: Request) {
     const { data: session, error: sessErr } = await service
       .from('sessions')
       .insert({
-        user_id:    user.id,
-        product_id: product.id,
-        name:       `Template Test · ${template.name}`,
+        user_id:      user.id,
+        product_id:   product.id,
+        workspace_id: workspaceId,
+        is_test:      true, // excluded from gallery + dashboard listings
+        name:         `Template Test · ${template.name}`,
       })
       .select('id')
       .single();
