@@ -8,7 +8,7 @@
  *
  * Admin-only.
  */
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
@@ -81,23 +81,12 @@ function parseSkillOutput(raw: string): ParsedTemplate | null {
   };
 }
 
-// ─── Admin guard ──────────────────────────────────────────────────────────────
-
-async function assertAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const service = await createServiceClient();
-  const { data: profile } = await service
-    .from('profiles').select('role').eq('id', user.id).single();
-  return profile?.role === 'admin' ? service : null;
-}
-
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  const service = await assertAdmin();
-  if (!service) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.response;
+  const service = ctx.service;
 
   if (!SKILL_CONTENT) {
     return NextResponse.json(

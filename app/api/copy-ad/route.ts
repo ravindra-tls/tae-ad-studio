@@ -337,11 +337,18 @@ export async function POST(request: Request) {
   );
   const settled = await Promise.allSettled(allTasks);
 
-  // ── 6. Increment usage count for each product attempted ──
-  const attemptCount = settled.length;
-  await service.from('profiles')
-    .update({ usage_count: profile.usage_count + attemptCount })
-    .eq('id', user.id);
+  // ── 6. Increment usage — one atomic RPC per SUCCESSFUL generation ──
+  // Previously: a non-atomic read-modify-write of usage_count that also
+  // charged for failed attempts. increment_usage is the same security-definer
+  // RPC the other generation routes use.
+  const chargedCount = settled.filter((r) => r.status === 'fulfilled').length;
+  for (let i = 0; i < chargedCount; i++) {
+    const { error: rpcErr } = await service.rpc('increment_usage', { user_id: user.id });
+    if (rpcErr) {
+      console.error('[copy-ad] increment_usage failed:', rpcErr.message);
+      break;
+    }
+  }
 
   // ── 7. Build response ──
   type SessionResult = {

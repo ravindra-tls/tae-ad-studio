@@ -1,25 +1,13 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 import { NextResponse } from 'next/server';
-
-async function assertAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const service = await createServiceClient();
-  const { data: profile } = await service
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-  return profile?.role === 'admin' ? service : null;
-}
 
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string } },
 ) {
-  const service = await assertAdmin();
-  if (!service) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.response;
+  const service = ctx.service;
 
   const body = await request.json();
   const { name, category, template, default_aspect_ratio } = body;
@@ -56,8 +44,9 @@ export async function DELETE(
   _request: Request,
   { params }: { params: { id: string } },
 ) {
-  const service = await assertAdmin();
-  if (!service) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.response;
+  const service = ctx.service;
 
   const { error } = await service
     .from('prompt_templates')

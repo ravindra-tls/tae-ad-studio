@@ -1,12 +1,17 @@
 /**
  * Shared route guards for /api/forge/*.
  *
- * House pattern: createClient() → auth.getUser() → 401; load the session via
- * the service client and require user ownership + source === 'forge' → 404.
+ * Auth/role checks delegate to lib/auth/guards.ts (the ONE authorization
+ * module); this file only adds the forge-session ownership guard and the
+ * forge-specific error/taxonomy helpers.
  */
 import { NextResponse } from 'next/server';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import {
+  requireUser as guardRequireUser,
+  requireAdmin as guardRequireAdmin,
+  jsonError as guardJsonError,
+} from '@/lib/auth/guards';
 import { taxonomies, staticFormats } from './knowledge';
 
 export interface ForgeSessionRow {
@@ -26,17 +31,11 @@ export type ForgeSessionContext =
   | { ok: true; user: User; service: SupabaseClient; session: ForgeSessionRow }
   | { ok: false; response: NextResponse };
 
-export function jsonError(status: number, message: string): NextResponse {
-  return NextResponse.json({ error: message }, { status });
-}
+export const jsonError = guardJsonError;
 
 /** Authenticated user + service client (no session requirement). */
 export async function requireUser(): Promise<AuthContext> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, response: jsonError(401, 'Unauthorized') };
-  const service = await createServiceClient();
-  return { ok: true, user, service };
+  return guardRequireUser();
 }
 
 /** Authenticated user owning a forge-sourced session. */
@@ -57,19 +56,9 @@ export async function requireForgeSession(sessionId: string): Promise<ForgeSessi
   return { ok: true, user, service, session: session as ForgeSessionRow };
 }
 
-/** Authenticated admin (profiles.role === 'admin'). */
+/** Authenticated admin (or dev — see lib/auth/guards.ts). */
 export async function requireAdmin(): Promise<AuthContext> {
-  const auth = await requireUser();
-  if (!auth.ok) return auth;
-  const { data: profile } = await auth.service
-    .from('profiles')
-    .select('role')
-    .eq('id', auth.user.id)
-    .single();
-  if (profile?.role !== 'admin') {
-    return { ok: false, response: jsonError(403, 'Forbidden') };
-  }
-  return auth;
+  return guardRequireAdmin();
 }
 
 /** Uniform error → response mapping for forge routes. */

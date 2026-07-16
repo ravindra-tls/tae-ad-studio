@@ -8,7 +8,7 @@
  *
  * Admin-only. Idempotent — calling it again regenerates the preview.
  */
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 import { NextResponse } from 'next/server';
 import { fillTemplate, aiEnrichPrompt, assemblePrompt } from '@/lib/prompt-assembler';
 import { imageProvider, getGeneratedFileExtension } from '@/lib/image-providers';
@@ -100,27 +100,15 @@ const DEMO_PRODUCT: Product = {
   created_at: new Date().toISOString(),
 };
 
-// ─── Admin guard ──────────────────────────────────────────────────────────────
-
-async function assertAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { user: null, service: null };
-  const service = await createServiceClient();
-  const { data: profile } = await service
-    .from('profiles').select('role').eq('id', user.id).single();
-  if (profile?.role !== 'admin') return { user: null, service: null };
-  return { user, service };
-}
-
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(
   _request: Request,
   { params }: { params: { id: string } },
 ) {
-  const { user, service } = await assertAdmin();
-  if (!user || !service) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.response;
+  const service = ctx.service;
 
   const { id: templateId } = params;
 

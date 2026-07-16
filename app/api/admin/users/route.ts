@@ -1,16 +1,11 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.response;
 
-  const serviceClient = await createServiceClient();
-  const { data: profile } = await serviceClient.from('profiles').select('role').eq('id', user.id).single();
-  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-  const { data, error } = await serviceClient
+  const { data, error } = await ctx.service
     .from('profiles')
     .select('*')
     .order('created_at', { ascending: false });

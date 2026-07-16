@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   extractDocumentText,
@@ -215,10 +215,10 @@ function buildContentBlocks(
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  // Auth check
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Admin-only: this route burns Anthropic tokens and is used exclusively
+  // from the admin product tools — it was previously open to any user.
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.response;
 
   const body = await request.json();
   const {
@@ -343,7 +343,7 @@ export async function POST(request: Request) {
     // 7. If editing, fetch existing product for diff
     let existingProduct = null;
     if (existingProductId) {
-      const { data } = await supabase
+      const { data } = await ctx.service
         .from('products')
         .select('*')
         .eq('id', existingProductId)

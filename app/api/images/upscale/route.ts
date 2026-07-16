@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireUser, isAdminRole } from '@/lib/auth/guards';
 
 export const maxDuration = 60; // upscaling a 1536×1024 image takes a few seconds
 
@@ -19,9 +19,9 @@ export const maxDuration = 60; // upscaling a 1536×1024 image takes a few secon
  */
 export async function POST(request: NextRequest) {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const ctx = await requireUser();
+  if (!ctx.ok) return ctx.response;
+  const { user, profile, service } = ctx;
 
   // ── Parse body ────────────────────────────────────────────────────────────
   let body: { image_id?: string };
@@ -36,15 +36,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'image_id is required' }, { status: 400 });
   }
 
-  // ── Fetch image record ────────────────────────────────────────────────────
-  const service = await createServiceClient();
+  // ── Fetch image record (with creator via session join) ──────────────────
   const { data: img, error: dbErr } = await service
     .from('generated_images')
-    .select('id, image_url, aspect_ratio, status')
+    .select('id, image_url, aspect_ratio, status, session:sessions(user_id)')
     .eq('id', image_id)
     .single();
 
   if (dbErr || !img) {
+    return NextResponse.json({ error: 'Image not found' }, { status: 404 });
+  }
+
+  // Ownership: only the creator (or an admin) may upscale — previously ANY
+  // authenticated user could upscale ANY image id. 404, not 403, so image
+  // ids are not enumerable.
+  const ownerId = (img as unknown as { session?: { user_id?: string } | null }).session?.user_id ?? null;
+  if (ownerId !== user.id && !isAdminRole(profile.role)) {
     return NextResponse.json({ error: 'Image not found' }, { status: 404 });
   }
 

@@ -1,24 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 
 export const dynamic = 'force-dynamic';
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-
-  const service = await createServiceClient();
-  const { data: profile } = await service
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-  if (profile?.role !== 'admin') {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { user, service };
-}
 
 /**
  * PATCH /api/admin/feature-flags/[name]
@@ -38,7 +21,7 @@ export async function PATCH(
   { params }: { params: { name: string } },
 ) {
   const ctx = await requireAdmin();
-  if ('error' in ctx) return ctx.error;
+  if (!ctx.ok) return ctx.response;
 
   const body = await request.json();
 
@@ -118,7 +101,7 @@ export async function DELETE(
   { params }: { params: { name: string } },
 ) {
   const ctx = await requireAdmin();
-  if ('error' in ctx) return ctx.error;
+  if (!ctx.ok) return ctx.response;
 
   const { error } = await ctx.service
     .from('feature_flags')

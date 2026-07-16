@@ -9,14 +9,17 @@ const VALID_STATUSES = new Set(['queued', 'in_progress', 'completed', 'failed', 
 
 export async function POST(request: Request) {
   // 1. Shared-secret authentication — providers must send the secret in the
-  //    x-webhook-secret header. If WEBHOOK_SECRET is not set in env the check
-  //    is skipped (dev convenience only; always set it in production).
+  //    x-webhook-secret header. FAIL CLOSED: a deploy without WEBHOOK_SECRET
+  //    rejects all webhooks rather than silently accepting unauthenticated
+  //    status writes (the previous behavior).
   const secret = process.env.WEBHOOK_SECRET;
-  if (secret) {
-    const incoming = request.headers.get('x-webhook-secret');
-    if (incoming !== secret) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  if (!secret) {
+    console.error('[webhook] WEBHOOK_SECRET is not set — rejecting webhook (fail-closed).');
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+  }
+  const incoming = request.headers.get('x-webhook-secret');
+  if (incoming !== secret) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   try {

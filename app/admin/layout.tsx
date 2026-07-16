@@ -1,16 +1,13 @@
-import { getProfile } from '@/lib/get-profile';
+import { requirePageAdmin } from '@/lib/auth/guards';
 import { AppLayout } from '@/components/AppLayout';
-import { redirect } from 'next/navigation';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getProfile();
-
-  if (profile?.role !== 'admin') redirect('/dashboard');
+  const ctx = await requirePageAdmin();
 
   return (
     <AppLayout
-      fullName={profile?.full_name ?? null}
-      email={profile?.email ?? null}
+      fullName={ctx.profile.full_name ?? null}
+      email={ctx.profile.email ?? null}
       isAdmin={true}
     >
       {children}

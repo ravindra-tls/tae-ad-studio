@@ -1,25 +1,10 @@
 'use server';
 
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { assertAdmin } from '@/lib/auth/guards';
 import { revalidatePath } from 'next/cache';
 import type { ProductContext, Ingredient, Claim, ColorEntry, ProductImage } from '@/types';
 
 const REFERENCE_BUCKET = 'product-references';
-
-/** Shared admin gate for server actions. Throws on non-admin callers. */
-async function assertAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Unauthorized');
-
-  const service = await createServiceClient();
-  const { data: profile } = await service
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-  if (profile?.role !== 'admin') throw new Error('Forbidden');
-}
 
 export type ProductUpdatePayload = {
   name: string;
@@ -34,7 +19,7 @@ export type ProductUpdatePayload = {
 };
 
 export async function updateProduct(id: string, data: ProductUpdatePayload) {
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const { error } = await supabase
     .from('products')
@@ -60,7 +45,7 @@ export async function uploadProductThumbnail(
   productId: string,
   formData: FormData,
 ): Promise<string> {
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
   const file = formData.get('file') as File;
 
   if (!file || file.size === 0) throw new Error('No file provided');
@@ -90,7 +75,7 @@ export async function uploadProductThumbnail(
 }
 
 export async function setProductThumbnail(productId: string, url: string) {
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const { error } = await supabase
     .from('products')
@@ -106,7 +91,7 @@ export async function setProductThumbnail(productId: string, url: string) {
 
 /** Map local product images to products by fuzzy name matching */
 export async function seedProductThumbnails() {
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const IMAGE_MAP: Record<string, string> = {
     'balaayah':  '/product_images/balaayah.webp',
@@ -153,7 +138,7 @@ export type ProductCreatePayload = {
 };
 
 export async function createProduct(data: ProductCreatePayload) {
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const { data: product, error } = await supabase
     .from('products')
@@ -181,7 +166,7 @@ export async function createProduct(data: ProductCreatePayload) {
 }
 
 export async function deleteProduct(id: string) {
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const { error } = await supabase
     .from('products')
@@ -206,8 +191,7 @@ export async function uploadProductReferenceImage(
   productId: string,
   formData: FormData,
 ): Promise<ProductImage> {
-  await assertAdmin();
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const file = formData.get('file') as File | null;
   const label = (formData.get('label') as string | null)?.trim() || null;
@@ -247,8 +231,7 @@ export async function uploadProductReferenceImage(
 
 /** Delete a reference image row and its underlying storage object. */
 export async function deleteProductReferenceImage(imageId: string) {
-  await assertAdmin();
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const { data: row, error: fetchError } = await supabase
     .from('product_images')
@@ -286,8 +269,7 @@ export async function updateProductReferenceImageLabel(
   imageId: string,
   label: string | null,
 ) {
-  await assertAdmin();
-  const supabase = await createServiceClient();
+  const { service: supabase } = await assertAdmin();
 
   const { error } = await supabase
     .from('product_images')

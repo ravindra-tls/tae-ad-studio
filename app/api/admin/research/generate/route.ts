@@ -27,39 +27,10 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/guards';
 import type { PositioningResearch } from '@/lib/research/types';
 
 export const maxDuration = 120;
-
-// ── Auth helper ──────────────────────────────────────────────────────────────
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-    };
-  }
-
-  const service = await createServiceClient();
-  const { data: profile } = await service
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (profile?.role !== 'admin') {
-    return {
-      error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
-    };
-  }
-
-  return { user, service };
-}
 
 // ── Request schema ────────────────────────────────────────────────────────────
 
@@ -194,7 +165,7 @@ no explanatory prose, no commentary before or after the JSON:
 export async function POST(request: Request) {
   // Auth
   const ctx = await requireAdmin();
-  if ('error' in ctx) return ctx.error;
+  if (!ctx.ok) return ctx.response;
 
   // Parse body
   let parsed: z.infer<typeof RequestBody>;
