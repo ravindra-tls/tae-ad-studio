@@ -3,6 +3,8 @@ import { requirePageAdmin } from '@/lib/auth/guards';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FeedbackActions } from './feedback-actions';
+import { ApproveProposal } from './approve-proposal';
+import { TEMPLATE_CATEGORIES } from '@/lib/templates/create-from-text';
 import { formatDate } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -87,7 +89,20 @@ export default async function AdminProposalsPage() {
                     <span className="font-medium">Current note:</span> {item.reviewer_note}
                   </p>
                 )}
-                {item.status !== 'approved' && <FeedbackActions submissionId={item.id} />}
+                {item.status !== 'approved' && (
+                  <div className="flex flex-col gap-3">
+                    {['pending', 'reviewed'].includes(item.status) && (
+                      <div>
+                        <ApproveProposal
+                          proposalId={item.id}
+                          proposalTitle={item.title}
+                          categories={[...TEMPLATE_CATEGORIES]}
+                        />
+                      </div>
+                    )}
+                    <FeedbackActions submissionId={item.id} />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

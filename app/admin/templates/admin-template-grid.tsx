@@ -8,6 +8,7 @@ import {
   Pencil, Trash2, X, ChevronLeft, ChevronRight,
   Check, Loader2, Images, AlertTriangle,
   Sparkles, ImagePlus, FlaskConical, ExternalLink, Camera,
+  Archive, Globe,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,10 @@ interface AdminTemplateGridProps {
   templates:        PromptTemplate[];
   imagesByTemplate: Record<string, TemplateImage[]>;
   countByTemplate:  Record<string, number>;
+  /** Devs manage everything and can promote workspace templates to universal. */
+  isDev:            boolean;
+  /** The caller's acting workspace — scopes which templates an admin may manage. */
+  workspaceId:      string | null;
 }
 
 const CATEGORIES = [
@@ -925,6 +930,8 @@ export function AdminTemplateGrid({
   templates:        initialTemplates,
   imagesByTemplate: initialImagesByTemplate,
   countByTemplate,
+  isDev,
+  workspaceId,
 }: AdminTemplateGridProps) {
   const router = useRouter();
 
@@ -937,6 +944,7 @@ export function AdminTemplateGrid({
   const [galleryId,           setGalleryId]           = useState<string | null>(null);
   const [showCreate,          setShowCreate]          = useState(false);
   const [generatingPreviewId, setGeneratingPreviewId] = useState<string | null>(null);
+  const [promotingId,         setPromotingId]         = useState<string | null>(null);
 
   const handleGeneratePreview = async (templateId: string, force = false) => {
     setGeneratingPreviewId(templateId);
@@ -986,13 +994,36 @@ export function AdminTemplateGrid({
     router.refresh();
   };
 
+  // Devs hard-delete; admins soft-archive (server decides — same endpoint).
+  // Either way the row leaves this active-only grid.
   const handleDelete = async (id: string) => {
     setDeleting(true);
-    await fetch(`/api/admin/templates/${id}`, { method: 'DELETE' });
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    const res = await fetch(`/api/admin/templates/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || `${isDev ? 'Delete' : 'Archive'} failed`);
+    }
     setConfirmDeleteId(null);
     setDeleting(false);
     router.refresh();
+  };
+
+  // Dev-only: promote a workspace-local template into the universal catalog.
+  const handlePromote = async (id: string) => {
+    setPromotingId(id);
+    try {
+      const res = await fetch(`/api/dev/templates/${id}/promote`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Promote failed');
+      setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, workspace_id: null } : t)));
+      router.refresh();
+    } catch (err: any) {
+      alert(`Promote failed: ${err.message}`);
+    } finally {
+      setPromotingId(null);
+    }
   };
 
   const editingTemplate = editingId ? templates.find((t) => t.id === editingId) ?? null : null;
@@ -1051,52 +1082,61 @@ export function AdminTemplateGrid({
           const isConfirmDelete = confirmDeleteId === template.id;
           const showPlaceholder = hasPlaceholders(template.template);
 
+          // Scope gating: devs manage everything; admins only their own
+          // workspace's templates (universal ones are read-only for them).
+          const isWorkspaceScoped = template.workspace_id != null;
+          const canManage = isDev || (isWorkspaceScoped && template.workspace_id === workspaceId);
+          const DeleteIcon = isDev ? Trash2 : Archive;
+          const deleteVerb = isDev ? 'Delete' : 'Archive';
+
           return (
             <div
               key={template.id}
               className="template-card group relative rounded-xl border border-brand-sage/30 bg-white p-4 hover:border-brand-forest/40 hover:shadow-md transition-[border-color,box-shadow]"
             >
-              {/* Admin action buttons — top right */}
-              <div className="absolute right-3 top-3 flex items-center gap-1">
-                {isConfirmDelete ? (
-                  <>
-                    <span className="mr-1 text-[10px] text-red-500 font-medium">Delete?</span>
-                    <button
-                      onClick={() => handleDelete(template.id)}
-                      disabled={deleting}
-                      className="rounded-md bg-red-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-600 disabled:opacity-60"
-                    >
-                      {deleting ? '…' : 'Yes'}
-                    </button>
-                    <button
-                      onClick={() => setConfirmDeleteId(null)}
-                      className="rounded-md border border-brand-sage/40 px-2 py-0.5 text-[10px] font-medium text-brand-slate hover:text-brand-forest"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => { setEditingId(template.id); setConfirmDeleteId(null); }}
-                      title="Edit template"
-                      className="rounded-md p-1 text-brand-slate opacity-0 group-hover:opacity-100 hover:bg-brand-cream hover:text-brand-forest transition-opacity"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => { setConfirmDeleteId(template.id); setEditingId(null); }}
-                      title="Delete template"
-                      className="rounded-md p-1 text-brand-slate opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-opacity"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                )}
-              </div>
+              {/* Admin action buttons — top right (hidden on read-only templates) */}
+              {canManage && (
+                <div className="absolute right-3 top-3 flex items-center gap-1">
+                  {isConfirmDelete ? (
+                    <>
+                      <span className="mr-1 text-[10px] text-red-500 font-medium">{deleteVerb}?</span>
+                      <button
+                        onClick={() => handleDelete(template.id)}
+                        disabled={deleting}
+                        className="rounded-md bg-red-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-600 disabled:opacity-60"
+                      >
+                        {deleting ? '…' : 'Yes'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="rounded-md border border-brand-sage/40 px-2 py-0.5 text-[10px] font-medium text-brand-slate hover:text-brand-forest"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setEditingId(template.id); setConfirmDeleteId(null); }}
+                        title="Edit template"
+                        className="rounded-md p-1 text-brand-slate opacity-0 group-hover:opacity-100 hover:bg-brand-cream hover:text-brand-forest transition-opacity"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => { setConfirmDeleteId(template.id); setEditingId(null); }}
+                        title={`${deleteVerb} template`}
+                        className="rounded-md p-1 text-brand-slate opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-opacity"
+                      >
+                        <DeleteIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Number + Name */}
-              <div className={cn('mb-2', isConfirmDelete ? 'pr-36' : 'pr-16')}>
+              <div className={cn('mb-2', isConfirmDelete ? 'pr-36' : canManage ? 'pr-16' : '')}>
                 <span className="text-[11px] font-bold text-brand-lime mr-1">#{template.number}</span>
                 <h3 className="inline text-sm font-semibold text-brand-black leading-snug">
                   {template.name}
@@ -1108,6 +1148,21 @@ export function AdminTemplateGrid({
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
                   {template.category}
                 </Badge>
+                {isWorkspaceScoped ? (
+                  <span
+                    className="rounded-full bg-brand-lime/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-forest"
+                    title="Local to this workspace"
+                  >
+                    Workspace
+                  </span>
+                ) : (
+                  <span
+                    className="rounded-full border border-brand-sage/40 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-slate/60"
+                    title="Universal — available to every workspace"
+                  >
+                    Universal
+                  </span>
+                )}
                 <span className="text-[10px] font-medium text-brand-slate bg-brand-cream px-1.5 py-0.5 rounded">
                   {template.default_aspect_ratio}
                 </span>
@@ -1176,6 +1231,23 @@ export function AdminTemplateGrid({
                     </button>
                   )}
                 </div>
+
+                {/* Dev-only: promote a workspace template into the universal catalog */}
+                {isDev && isWorkspaceScoped && (
+                  <button
+                    onClick={() => handlePromote(template.id)}
+                    disabled={promotingId === template.id}
+                    title="Make this template available to every workspace"
+                    className="shrink-0 flex items-center gap-1 rounded-md border border-brand-sage/30 px-2 py-1 text-[10px] font-medium text-brand-slate hover:border-brand-forest/50 hover:text-brand-forest hover:bg-brand-cream transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {promotingId === template.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Globe className="h-3 w-3" />
+                    )}
+                    {promotingId === template.id ? 'Promoting…' : 'Promote to universal'}
+                  </button>
+                )}
 
                 {/* Generate preview — only shown when no preview exists yet */}
                 {!template.preview_image_url && (

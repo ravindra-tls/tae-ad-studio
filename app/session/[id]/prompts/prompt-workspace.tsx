@@ -534,6 +534,14 @@ export function PromptWorkspace({
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
                 {template.category}
               </Badge>
+              {template.workspace_id && (
+                <span
+                  className="rounded-full bg-brand-lime/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-forest"
+                  title="Created by your workspace — not part of the universal catalog"
+                >
+                  Workspace
+                </span>
+              )}
               <span className="text-[10px] font-medium text-brand-slate bg-brand-cream px-1.5 py-0.5 rounded">
                 {getRatio(template)}
               </span>

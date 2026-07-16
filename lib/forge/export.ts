@@ -301,6 +301,11 @@ export interface ExportConceptArgs {
    * the prompt should assume refs exist even when none are recorded here.
    */
   assumeRefs?: boolean;
+  /**
+   * Workspace the export runs within (from the forge session row). Scopes
+   * template auto-suggestion to universal + this workspace's templates.
+   */
+  workspaceId?: string | null;
 }
 
 export interface ExportConceptResult {
@@ -317,6 +322,7 @@ export async function exportConcept({
   pins = {},
   templateNumber = null,
   assumeRefs = false,
+  workspaceId = null,
 }: ExportConceptArgs): Promise<ExportConceptResult> {
   const format = (card.dna && card.dna.format) || 'Lifestyle';
   const stage = card.dna && card.dna.awarenessStage;
@@ -330,7 +336,7 @@ export async function exportConcept({
   // judged on what will actually be depicted.
   let template = (!freeform && templateNumber) ? await getTemplate(templateNumber) : null;
   const sceneForSuggest = (champion && champion.visualIdea) || card.visualIdea;
-  const suggestion = await suggestTemplate({ ...card, visualIdea: sceneForSuggest }, recipe);
+  const suggestion = await suggestTemplate({ ...card, visualIdea: sceneForSuggest }, recipe, workspaceId);
   const autoNumber = suggestion.template ? suggestion.template.number : null;
   if (!template && !freeform) template = suggestion.template;
   if (!template && !freeform) return { record: null, error: 'No ad templates available.' };

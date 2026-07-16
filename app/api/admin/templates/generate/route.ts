@@ -8,7 +8,8 @@
  *
  * Admin-only.
  */
-import { requireAdmin } from '@/lib/auth/guards';
+import { requireAdmin, isDevRole } from '@/lib/auth/guards';
+import { invalidateTemplateCache } from '@/lib/templates/compat';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
@@ -88,6 +89,13 @@ export async function POST(request: Request) {
   if (!ctx.ok) return ctx.response;
   const service = ctx.service;
 
+  // Scope: dev-created templates are universal (workspace_id null); admins
+  // create workspace-local templates and therefore need a workspace.
+  const dev = isDevRole(ctx.profile.role);
+  if (!dev && !ctx.workspaceId) {
+    return NextResponse.json({ error: 'No workspace selected' }, { status: 400 });
+  }
+
   if (!SKILL_CONTENT) {
     return NextResponse.json(
       { error: 'image-to-template skill not loaded — check skills/image-to-template/SKILL.md' },
@@ -166,29 +174,22 @@ export async function POST(request: Request) {
     parsed.aspect_ratio = '4:5';
   }
 
-  // Derive next template number (column is NOT NULL, no DB default)
-  const { data: maxRow } = await service
-    .from('prompt_templates')
-    .select('number')
-    .order('number', { ascending: false })
-    .limit(1)
-    .single();
-  const nextNumber = ((maxRow?.number as number | null) ?? 0) + 1;
-
-  // Save to DB
+  // Save to DB. `number` is omitted — it comes from the sequence default.
   const { data, error } = await service
     .from('prompt_templates')
     .insert({
-      number:               nextNumber,
       name:                 parsed.name.trim().slice(0, 120),
       category:             parsed.category,
       template:             parsed.template.trim(),
       default_aspect_ratio: parsed.aspect_ratio,
       version:              1,
+      created_by:           ctx.user.id,
+      workspace_id:         dev ? null : ctx.workspaceId,
     })
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  invalidateTemplateCache();
   return NextResponse.json(data, { status: 201 });
 }

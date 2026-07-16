@@ -13,6 +13,8 @@ export default async function PromptsPage({ params }: { params: { id: string } }
   // Use service client for all data fetching to bypass RLS issues
   const serviceClient = await createServiceClient();
 
+  // `*` includes workspace_id — the session's workspace scopes which
+  // templates are visible below.
   const { data: session } = await serviceClient
     .from('sessions')
     .select('*, product:products(*)')
@@ -22,16 +24,24 @@ export default async function PromptsPage({ params }: { params: { id: string } }
 
   if (!session) redirect('/dashboard');
 
+  const workspaceId: string | null = session.workspace_id ?? null;
+
   const { data: profile } = await serviceClient
     .from('profiles')
     .select('usage_count, usage_cap')
     .eq('id', user.id)
     .single();
 
-  const { data: templates } = await serviceClient
+  // Union catalog: universal templates + this session's workspace's own,
+  // active only. Rows keep workspace_id so the client can badge scope.
+  let templatesQuery = serviceClient
     .from('prompt_templates')
     .select('*')
-    .order('number', { ascending: true });
+    .eq('is_active', true);
+  templatesQuery = workspaceId
+    ? templatesQuery.or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
+    : templatesQuery.is('workspace_id', null);
+  const { data: templates } = await templatesQuery.order('number', { ascending: true });
 
   const { data: refImages } = await serviceClient
     .from('product_images')

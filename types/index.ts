@@ -178,6 +178,10 @@ export interface PromptTemplate {
   created_at: string;
   /** AI-generated preview image using demo product (Sulwhasoo). Null until admin generates it. */
   preview_image_url: string | null;
+  /** NULL = universal (every workspace); NOT NULL = local to that workspace. */
+  workspace_id?: string | null;
+  /** Soft archive — archived templates leave pickers but keep provenance. */
+  is_active?: boolean;
 }
 
 export interface Session {
@@ -188,6 +192,8 @@ export interface Session {
   status: 'active' | 'archived';
   /** Origin workflow: 'template' | 'brief' | 'copy_ad' | 'forge' (Concept Forge). */
   source?: string;
+  /** Workspace the session belongs to — scopes template visibility. */
+  workspace_id?: string | null;
   created_at: string;
   product?: Product;
 }

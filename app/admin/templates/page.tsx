@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase/server';
+import { requirePageAdmin, isDevRole } from '@/lib/auth/guards';
 import { AdminTemplateGrid } from './admin-template-grid';
 import type { PromptTemplate } from '@/types';
 
@@ -14,12 +14,22 @@ interface TemplateImage {
 }
 
 export default async function AdminTemplatesPage() {
-  const supabase = await createServiceClient();
+  const ctx = await requirePageAdmin();
+  const supabase = ctx.service;
+  const isDev = isDevRole(ctx.profile.role);
+  const workspaceId = ctx.workspaceId;
 
-  const { data: templates } = await supabase
+  // Union catalog: universal templates + this workspace's own. Active only —
+  // archived templates keep provenance but leave the grid. `*` includes
+  // workspace_id so the grid can badge scope and gate edit/archive/promote.
+  let templatesQuery = supabase
     .from('prompt_templates')
     .select('*')
-    .order('number');
+    .eq('is_active', true);
+  templatesQuery = workspaceId
+    ? templatesQuery.or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
+    : templatesQuery.is('workspace_id', null);
+  const { data: templates } = await templatesQuery.order('number');
 
   const templateList = (templates || []) as PromptTemplate[];
   const templateIds  = templateList.map((t) => t.id);
@@ -61,6 +71,8 @@ export default async function AdminTemplatesPage() {
         templates={templateList}
         imagesByTemplate={imagesByTemplate}
         countByTemplate={countByTemplate}
+        isDev={isDev}
+        workspaceId={workspaceId}
       />
     </div>
   );

@@ -62,6 +62,7 @@ export async function POST(request: Request) {
       brandSlug: deck.brand,
       templateNumber: body.templateNumber ?? null,
       assumeRefs: true,
+      workspaceId: session.workspace_id,
     });
 
     if (!out.record) {

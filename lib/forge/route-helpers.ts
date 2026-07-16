@@ -21,6 +21,8 @@ export interface ForgeSessionRow {
   name: string;
   status: string;
   source: string | null;
+  /** Workspace the session belongs to — scopes template suggestion/pickers. */
+  workspace_id: string | null;
 }
 
 export type AuthContext =
@@ -46,7 +48,7 @@ export async function requireForgeSession(sessionId: string): Promise<ForgeSessi
 
   const { data: session, error } = await service
     .from('sessions')
-    .select('id, user_id, product_id, name, status, source')
+    .select('id, user_id, product_id, name, status, source, workspace_id')
     .eq('id', sessionId)
     .maybeSingle();
 

@@ -23,6 +23,10 @@ export interface CompatTemplate {
   /** Alias of the live table's default_aspect_ratio. */
   aspect_ratio: string;
   preview_image_url: string | null;
+  /** NULL = universal; NOT NULL = local to that workspace. */
+  workspace_id: string | null;
+  /** Soft archive — archived templates keep provenance but leave pickers. */
+  is_active: boolean;
 }
 
 /** Picker-safe projection (no full prompt body) + compat flags. */
@@ -32,6 +36,7 @@ export interface TemplateListItem {
   category: string;
   aspect_ratio: string;
   preview_image_url: string | null;
+  scope: 'universal' | 'workspace';
   people_ok: boolean;
   features_person: boolean;
   has_headline_slot: boolean;
@@ -98,7 +103,7 @@ async function fetchStore(): Promise<TemplateStore> {
   const service = await createServiceClient();
   const { data, error } = await service
     .from('prompt_templates')
-    .select('id,number,name,category,template,default_aspect_ratio,preview_image_url')
+    .select('id,number,name,category,template,default_aspect_ratio,preview_image_url,workspace_id,is_active')
     .order('number', { ascending: true });
   if (error) throw new Error(`Failed to load prompt_templates: ${error.message}`);
   const templates: CompatTemplate[] = (data ?? []).map((row) => ({
@@ -109,6 +114,8 @@ async function fetchStore(): Promise<TemplateStore> {
     template: row.template as string,
     aspect_ratio: (row.default_aspect_ratio as string) || '4:5',
     preview_image_url: (row.preview_image_url as string | null) ?? null,
+    workspace_id: (row.workspace_id as string | null) ?? null,
+    is_active: (row.is_active as boolean | null) ?? true,
   }));
   return { at: Date.now(), templates, byNumber: new Map(templates.map((t) => [t.number, t])) };
 }
@@ -128,10 +135,26 @@ async function load(): Promise<TemplateStore> {
   }
 }
 
-/** All templates, trimmed to picker-safe fields (no full prompt body) + compat flags. */
-export async function listTemplates(): Promise<TemplateListItem[]> {
+/**
+ * Drop the module cache — call after any prompt_templates write (approve,
+ * promote, edit, archive) so pickers see the change without the 60s lag.
+ * ONE global store, filtered per call; invalidation has one target.
+ */
+export function invalidateTemplateCache(): void {
+  _store = null;
+}
+
+/** The catalog a workspace can use: universal set + that workspace's own, active only. */
+function visibleTo(templates: CompatTemplate[], workspaceId?: string | null): CompatTemplate[] {
+  return templates.filter(
+    (t) => t.is_active && (t.workspace_id === null || (workspaceId != null && t.workspace_id === workspaceId)),
+  );
+}
+
+/** Templates visible to a workspace, trimmed to picker-safe fields + compat flags. */
+export async function listTemplates(workspaceId?: string | null): Promise<TemplateListItem[]> {
   const { templates } = await load();
-  return templates.map((t) => {
+  return visibleTo(templates, workspaceId).map((t) => {
     const c = templateCompat(t);
     return {
       number: t.number,
@@ -139,6 +162,7 @@ export async function listTemplates(): Promise<TemplateListItem[]> {
       category: t.category,
       aspect_ratio: t.aspect_ratio,
       preview_image_url: t.preview_image_url || null,
+      scope: t.workspace_id === null ? 'universal' : 'workspace',
       people_ok: !c.peopleBan,
       features_person: c.featuresPerson,
       has_headline_slot: c.headlineSlot,
@@ -217,9 +241,11 @@ export interface TemplateSuggestion {
 export async function suggestTemplate(
   card: CardLike,
   recipe?: RecipeLike | null,
+  workspaceId?: string | null,
 ): Promise<TemplateSuggestion> {
   const category = conceptToCategory(card, recipe);
-  const { templates: all } = await load();
+  const { templates: fullStore } = await load();
+  const all = visibleTo(fullStore, workspaceId);
   const needsPerson = sceneNeedsPerson(card && card.visualIdea);
 
   const compatible = needsPerson ? all.filter((t) => !templateCompat(t).peopleBan) : all;
