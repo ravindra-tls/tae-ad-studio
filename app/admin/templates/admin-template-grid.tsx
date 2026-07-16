@@ -16,8 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useSnackbar } from '@/components/ui/snackbar';
 import { cn } from '@/lib/utils';
-import { LoadingAnimations } from '@/components/loading-animations';
-import { loadingMessages } from '@/lib/loading-messages';
+import { LoadingInline } from '@/components/LoadingInline';
 import type { PromptTemplate } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -238,69 +237,13 @@ function CreateTemplateModal({
   const [testResults,  setTestResults]  = useState<TestResult[]>([]);
   const [isDragging,   setIsDragging]   = useState(false);
 
-  // ── Inline loading state (mirrors LoadingExperience internals) ──
-  const [loadingProgress,   setLoadingProgress]   = useState(0);
-  const [loadingElapsed,    setLoadingElapsed]     = useState(0);
-  const [loadingMsgIdx,     setLoadingMsgIdx]      = useState(0);
-  const [loadingAnimIdx,    setLoadingAnimIdx]     = useState(0);
-  const [loadingTextFading, setLoadingTextFading]  = useState(false);
-  const [loadingAnimFading, setLoadingAnimFading]  = useState(false);
-  const [loadingEstSecs,    setLoadingEstSecs]     = useState(15);
+  // ── Inline loading — staged experience lives in <LoadingInline> ──
+  // `loadingComplete` snaps its bar to 100% before the step transition.
+  const [loadingComplete, setLoadingComplete] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isLoading = step === 'generating' || step === 'testing';
-
-  // Reset + seed loading state when a loading step begins
-  useEffect(() => {
-    if (!isLoading) return;
-    setLoadingProgress(0);
-    setLoadingElapsed(0);
-    setLoadingMsgIdx(Math.floor(Math.random() * loadingMessages.length));
-    setLoadingAnimIdx(Math.floor(Math.random() * LoadingAnimations.length));
-    setLoadingTextFading(false);
-    setLoadingAnimFading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
-
-  // Elapsed timer
-  useEffect(() => {
-    if (!isLoading) return;
-    const id = setInterval(() => setLoadingElapsed((e) => e + 1), 1000);
-    return () => clearInterval(id);
-  }, [isLoading]);
-
-  // Fake progress curve (matches LoadingExperience formula)
-  useEffect(() => {
-    if (!isLoading) return;
-    setLoadingProgress(Math.min(92, (1 - Math.exp(-loadingElapsed / (loadingEstSecs * 0.6))) * 100));
-  }, [loadingElapsed, loadingEstSecs, isLoading]);
-
-  // Rotate messages every 4.5s
-  useEffect(() => {
-    if (!isLoading) return;
-    const id = setInterval(() => {
-      setLoadingTextFading(true);
-      setTimeout(() => {
-        setLoadingMsgIdx((i) => (i + 1) % loadingMessages.length);
-        setLoadingTextFading(false);
-      }, 300);
-    }, 4500);
-    return () => clearInterval(id);
-  }, [isLoading]);
-
-  // Cycle SVG animations every 10s
-  useEffect(() => {
-    if (!isLoading) return;
-    const id = setInterval(() => {
-      setLoadingAnimFading(true);
-      setTimeout(() => {
-        setLoadingAnimIdx((i) => (i + 1) % LoadingAnimations.length);
-        setLoadingAnimFading(false);
-      }, 500);
-    }, 10000);
-    return () => clearInterval(id);
-  }, [isLoading]);
 
   const loadFile = (file: File) => {
     if (!file.type.startsWith('image/')) return;
@@ -332,7 +275,7 @@ function CreateTemplateModal({
       return;
     }
     setError(null);
-    setLoadingEstSecs(15);
+    setLoadingComplete(false);
     setStep('generating');
 
     try {
@@ -350,7 +293,7 @@ function CreateTemplateModal({
       setTemplate(data as PromptTemplate);
       onCreated(data as PromptTemplate);
       // Fill bar to 100%, then transition
-      setLoadingProgress(100);
+      setLoadingComplete(true);
       setTimeout(() => setStep('preview'), 700);
     } catch (err: any) {
       setError(err.message);
@@ -360,7 +303,7 @@ function CreateTemplateModal({
 
   const handleTest = async () => {
     if (!template) return;
-    setLoadingEstSecs(60);
+    setLoadingComplete(false);
     setStep('testing');
     try {
       const res = await fetch('/api/admin/templates/test', {
@@ -371,15 +314,13 @@ function CreateTemplateModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Test failed');
       setTestResults(data.results ?? []);
-      setLoadingProgress(100);
+      setLoadingComplete(true);
       setTimeout(() => setStep('results'), 700);
     } catch (err: any) {
       setError(err.message);
       setStep('preview');
     }
   };
-
-  const LoadingAnimComponent = LoadingAnimations[loadingAnimIdx];
 
   return (
     <Modal open onClose={onClose} disableClose={isLoading} maxWidth="max-w-2xl">
@@ -519,51 +460,13 @@ function CreateTemplateModal({
             </div>
 
             <div className="flex flex-col items-center justify-center gap-4 px-6 py-8">
-              {/* Animated SVG — same as LoadingExperience */}
-              <div
-                style={{
-                  width: 180, height: 180,
-                  animation: 'floatBob 4s ease-in-out infinite',
-                  opacity:   loadingAnimFading ? 0 : 1,
-                  transform: loadingAnimFading ? 'scale(0.9) translateY(10px)' : 'scale(1) translateY(0)',
-                  transition: 'opacity 500ms ease, transform 500ms ease',
-                }}
-              >
-                <LoadingAnimComponent key={loadingAnimIdx} />
-              </div>
-
-              {/* Rotating message */}
-              <p
-                className="text-center text-sm font-medium text-brand-forest/80 max-w-xs"
-                style={{
-                  opacity:   loadingTextFading ? 0 : 1,
-                  transform: loadingTextFading ? 'translateY(6px)' : 'translateY(0)',
-                  transition: 'opacity 300ms ease, transform 300ms ease',
-                }}
-              >
-                {loadingMessages[loadingMsgIdx]}
-              </p>
-
-              {/* Progress bar */}
-              <div className="w-full max-w-xs">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-brand-sage/15">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${loadingProgress}%`,
-                      background: 'linear-gradient(90deg, #2D644E, #4A9E7A, #D4A853)',
-                      boxShadow:  '0 0 10px rgba(45,100,78,0.25)',
-                      transition: loadingProgress === 100
-                        ? 'width 700ms cubic-bezier(0.4,0,0.2,1)'
-                        : 'width 1000ms ease-out',
-                    }}
-                  />
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[11px] text-brand-slate/50">
-                  <span>{step === 'generating' ? 'Crafting your template…' : 'Generating 3 ad images…'}</span>
-                  <span>{Math.round(loadingProgress)}%</span>
-                </div>
-              </div>
+              <LoadingInline
+                key={step}
+                estimatedSeconds={step === 'generating' ? 15 : 60}
+                cap={92}
+                complete={loadingComplete}
+                label={step === 'generating' ? 'Crafting your template…' : 'Generating 3 ad images…'}
+              />
 
               <p className="text-[10px] text-brand-slate/35 text-center">
                 {step === 'generating'

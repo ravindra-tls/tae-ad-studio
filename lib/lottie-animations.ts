@@ -1,7 +1,9 @@
 /**
  * Premium inline Lottie animations with gradient fills.
  * Uses Bodymovin `gf` (gradient fill) and `gs` (gradient stroke) shape types.
- * Brand palette: forest #2D644E, sage #4A9E7A, gold #D4A853, cream #F5F0E6
+ * Colors are baked into the gradient stop data below as normalized RGB.
+ * NOTE: unused since the SVG loading scenes replaced Lottie; colors predate
+ * the forest/lime rebrand — re-derive from tailwind brand tokens if revived.
  */
 
 /* ── Easing presets (cubic bezier in/out handles) ── */

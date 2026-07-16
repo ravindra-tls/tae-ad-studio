@@ -7,6 +7,7 @@ import type { LightboxCreatorInfo } from '@/components/Lightbox';
 import { EditPromptModal } from '@/components/EditPromptModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ImageCard } from '@/components/ImageCard';
 import { SwipeView } from '@/components/SwipeView';
 import { AnalyzingImage } from '@/components/AnalyzingImage';
@@ -484,19 +485,30 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
         )
       ) : (
         filtered.length === 0 && editEntries.length === 0 ? (
-          <EmptyState
-            icon={Images}
-            className="stagger-item"
-            style={{ animationDelay: '120ms' }}
-            title={activeTab === 'starred' && starredLoading ? 'Loading starred images…' : 'No images found'}
-            subtitle={
-              activeTab === 'starred' && !starredLoading
-                ? 'Star an image to see it here.'
-                : activeTab !== 'starred'
-                  ? 'Generate some ads to get started.'
-                  : undefined
-            }
-          />
+          activeTab === 'starred' && starredLoading ? (
+            // Full-region load of the starred tab — brand skeleton grid,
+            // one tile per starred image (capped), instead of a spinner.
+            <div className="grid animate-fade-in grid-cols-2 gap-5 lg:grid-cols-3">
+              {Array.from({ length: Math.min(starredCount, 9) || 3 }).map((_, i) => (
+                <div key={i} className="flex flex-col gap-2.5 rounded-xl border border-brand-sage/20 bg-white p-3">
+                  <Skeleton className={i % 2 === 0 ? 'aspect-[4/5] w-full rounded-lg' : 'aspect-square w-full rounded-lg'} />
+                  <Skeleton className="h-3 w-2/5" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Images}
+              className="stagger-item"
+              style={{ animationDelay: '120ms' }}
+              title="No images found"
+              subtitle={
+                activeTab === 'starred'
+                  ? 'Star an image to see it here.'
+                  : 'Generate some ads to get started.'
+              }
+            />
+          )
         ) : (
           <>
             {/* Masonry grid */}

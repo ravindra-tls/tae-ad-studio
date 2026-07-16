@@ -36,7 +36,7 @@ function BriefIllustration() {
       <rect x="30" y="32" width="88" height="6" fill="#E8E0D0"
             transform="rotate(-8 74 69)" />
       {/* Clipboard tab */}
-      <rect x="55" y="16" width="30" height="9" rx="4.5" fill="#3A5340"
+      <rect x="55" y="16" width="30" height="9" rx="4.5" fill="#1A5129"
             transform="rotate(-8 70 20)" />
       {/* Text lines */}
       <rect x="40" y="46" width="55" height="4" rx="2" fill="#D4C9B0"
@@ -60,23 +60,23 @@ function BriefIllustration() {
       */}
       <g transform="translate(118, 88) rotate(45)">
         {/* Dark cap (rounded end) */}
-        <rect x="-4.5" y="-33" width="9" height="17" rx="4.5" fill="#1C2E22" />
+        <rect x="-4.5" y="-33" width="9" height="17" rx="4.5" fill="#123B1E" />
         {/* Gold band — cap/barrel junction */}
-        <rect x="-5" y="-17" width="10" height="3.5" rx="1.75" fill="#C4963F" />
+        <rect x="-5" y="-17" width="10" height="3.5" rx="1.75" fill="#C5D933" />
         {/* Main barrel */}
-        <rect x="-4" y="-13.5" width="8" height="36" rx="4" fill="#3A5340" />
+        <rect x="-4" y="-13.5" width="8" height="36" rx="4" fill="#1A5129" />
         {/* Grip section (slightly darker near nib) */}
-        <rect x="-4" y="19.5" width="8" height="7" rx="2" fill="#253C2C" />
+        <rect x="-4" y="19.5" width="8" height="7" rx="2" fill="#164821" />
         {/* Nib body — tapered pentagon */}
-        <path d="M -3.5 26.5 L 3.5 26.5 L 1.5 35.5 L 0 38.5 L -1.5 35.5 Z" fill="#3A5340" />
+        <path d="M -3.5 26.5 L 3.5 26.5 L 1.5 35.5 L 0 38.5 L -1.5 35.5 Z" fill="#1A5129" />
         {/* Nib center slit */}
-        <line x1="0" y1="28.5" x2="0" y2="36" stroke="#1C2E22" strokeWidth="0.9" />
+        <line x1="0" y1="28.5" x2="0" y2="36" stroke="#123B1E" strokeWidth="0.9" />
         {/* Gold nib tip ball */}
-        <ellipse cx="0" cy="38.5" rx="1.9" ry="1.4" fill="#C4963F" />
+        <ellipse cx="0" cy="38.5" rx="1.9" ry="1.4" fill="#C5D933" />
         {/* Clip — thin strip on barrel edge */}
-        <rect x="3.5" y="-31" width="2.2" height="31" rx="1.1" fill="#1C2E22" opacity="0.6" />
+        <rect x="3.5" y="-31" width="2.2" height="31" rx="1.1" fill="#123B1E" opacity="0.6" />
         {/* Clip head (rounded) */}
-        <circle cx="4.6" cy="-31.5" r="2.4" fill="#1C2E22" opacity="0.6" />
+        <circle cx="4.6" cy="-31.5" r="2.4" fill="#123B1E" opacity="0.6" />
       </g>
     </svg>
   );
@@ -112,14 +112,14 @@ function CopyAdIllustration() {
       <rect x="24" y="36" width="50" height="76" rx="6" fill="#EFF5D8"
             transform="rotate(-8 49 74)" />
       {/* Plant in front phone — flower/bloom */}
-      <circle cx="50" cy="75" r="14" fill="#C4963F" opacity="0.25" />
-      <circle cx="50" cy="66" r="7" fill="#C4963F" opacity="0.6" />
-      <circle cx="44" cy="74" r="6" fill="#E8B84B" opacity="0.55" />
-      <circle cx="57" cy="73" r="6" fill="#D4A83A" opacity="0.55" />
-      <circle cx="50" cy="81" r="6" fill="#C49530" opacity="0.55" />
+      <circle cx="50" cy="75" r="14" fill="#C5D933" opacity="0.25" />
+      <circle cx="50" cy="66" r="7" fill="#C5D933" opacity="0.6" />
+      <circle cx="44" cy="74" r="6" fill="#D7E455" opacity="0.55" />
+      <circle cx="57" cy="73" r="6" fill="#C5D933" opacity="0.55" />
+      <circle cx="50" cy="81" r="6" fill="#A8BB2E" opacity="0.55" />
       <circle cx="50" cy="74" r="5" fill="#FAF6ED" />
       {/* Stem */}
-      <rect x="49" y="82" width="2" height="18" rx="1" fill="#3A5340" opacity="0.6"
+      <rect x="49" y="82" width="2" height="18" rx="1" fill="#1A5129" opacity="0.6"
             transform="rotate(-8 50 91)" />
       {/* Leaves on stem */}
       <ellipse cx="44" cy="90" rx="7" ry="4" fill="#5A7A4A" opacity="0.6"
@@ -139,13 +139,13 @@ function TemplateIllustration() {
     <svg viewBox="0 0 180 140" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
       {/* Grid of 4 template cards */}
       {/* Top-left — selected/highlighted */}
-      <rect x="22" y="20" width="66" height="44" rx="5" fill="#3A5340" />
-      <rect x="28" y="27" width="36" height="24" rx="3" fill="#5A7A5A" opacity="0.6" />
+      <rect x="22" y="20" width="66" height="44" rx="5" fill="#1A5129" />
+      <rect x="28" y="27" width="36" height="24" rx="3" fill="#4E8F5B" opacity="0.6" />
       <rect x="28" y="35" width="28" height="3" rx="1.5" fill="#C8E0A8" opacity="0.7" />
       <rect x="28" y="41" width="20" height="3" rx="1.5" fill="#C8E0A8" opacity="0.5" />
       {/* Checkmark circle */}
-      <circle cx="72" cy="24" r="8" fill="#C4963F" />
-      <polyline points="68,24 71,27 77,21" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="72" cy="24" r="8" fill="#C5D933" />
+      <polyline points="68,24 71,27 77,21" stroke="#1A5129" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
       {/* Top-right */}
       <rect x="94" y="20" width="66" height="44" rx="5" fill="#FAF6ED" stroke="#D4C9B0" strokeWidth="1.5" />
@@ -166,8 +166,8 @@ function TemplateIllustration() {
       <rect x="100" y="93" width="20" height="3" rx="1.5" fill="#C8BC9F" opacity="0.7" />
 
       {/* Sparkle accent */}
-      <path d="M160 18 L162 14 L164 18 L168 20 L164 22 L162 26 L160 22 L156 20 Z" fill="#C4963F" opacity="0.7" />
-      <path d="M16 115 L17 112 L18 115 L21 116 L18 117 L17 120 L16 117 L13 116 Z" fill="#C4963F" opacity="0.5" />
+      <path d="M160 18 L162 14 L164 18 L168 20 L164 22 L162 26 L160 22 L156 20 Z" fill="#C5D933" opacity="0.7" />
+      <path d="M16 115 L17 112 L18 115 L21 116 L18 117 L17 120 L16 117 L13 116 Z" fill="#C5D933" opacity="0.5" />
     </svg>
   );
 }
@@ -556,11 +556,11 @@ function CopyAdModal({ products, onClose }: CopyAdModalProps) {
             <div className="relative h-20 w-20">
               <div
                 className="absolute inset-0 rounded-full animate-ping opacity-20"
-                style={{ background: 'linear-gradient(135deg, #3A5340, #D0DD61)' }}
+                style={{ background: 'linear-gradient(135deg, #1A5129, #C5D933)' }}
               />
               <div
                 className="relative h-20 w-20 rounded-full flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #3A5340, #C4963F)' }}
+                style={{ background: 'linear-gradient(135deg, #1A5129, #C5D933)' }}
               >
                 <Loader2 className="h-8 w-8 text-white animate-spin" />
               </div>
@@ -620,7 +620,7 @@ export function WorkflowCards({ products }: WorkflowCardsProps) {
                 'hover:shadow-lg hover:-translate-y-0.5',
               )}
               style={{
-                background: 'linear-gradient(135deg, #E0CEAB 0%, #D0DD61 100%)',
+                background: 'linear-gradient(135deg, #F2E8DD 0%, #C5D933 100%)',
                 minHeight: 200,
               }}
             >
@@ -628,17 +628,17 @@ export function WorkflowCards({ products }: WorkflowCardsProps) {
               <div className="relative z-10 flex-1">
                 <p
                   className="text-[11px] font-semibold uppercase tracking-widest mb-2 opacity-60"
-                  style={{ color: '#4D4D4D' }}
+                  style={{ color: '#1A5129' }}
                 >
                   {card.eyebrow}
                 </p>
                 <h3
                   className="font-serif text-2xl leading-tight mb-2 whitespace-pre-line"
-                  style={{ color: '#2A3E2A', fontWeight: 400 }}
+                  style={{ color: '#1A5129', fontWeight: 400 }}
                 >
                   {card.title}
                 </h3>
-                <p className="text-xs leading-relaxed" style={{ color: '#5A5A5A', maxWidth: '140px' }}>
+                <p className="text-xs leading-relaxed" style={{ color: '#475569', maxWidth: '140px' }}>
                   {card.subtitle}
                 </p>
               </div>
@@ -646,7 +646,7 @@ export function WorkflowCards({ products }: WorkflowCardsProps) {
               {/* Arrow */}
               <div
                 className="relative z-10 mt-4 flex items-center gap-1 text-xs font-semibold transition-all duration-200 group-hover:gap-2"
-                style={{ color: '#3A5340' }}
+                style={{ color: '#1A5129' }}
               >
                 Get started
                 <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />

@@ -1,9 +1,22 @@
 'use client';
 
+/**
+ * LoadingExperience — full-screen loading overlay (portal) — a thin shell
+ * over the shared stage engine in lib/hooks/use-loading-stages.ts.
+ *
+ * When `complete` flips true the bar snaps to 100%, the overlay fades out,
+ * and onExitComplete fires (parent navigates). onExitComplete is held in a
+ * ref and its timer is cleared on unmount, so it can never fire after
+ * unmount. For non-overlay contexts use components/LoadingInline.tsx.
+ */
+
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { loadingMessages } from '@/lib/loading-messages';
-import { LoadingAnimations } from '@/components/loading-animations';
+import {
+  useLoadingStages,
+  LOADING_BAR_GRADIENT,
+  LOADING_BAR_SHADOW,
+} from '@/lib/hooks/use-loading-stages';
 
 interface LoadingExperienceProps {
   estimatedSeconds?: number;
@@ -24,31 +37,29 @@ export function LoadingExperience({
   onStatusCheck,
   pollIntervalMs = 2000,
 }: LoadingExperienceProps) {
-  const [messageIndex, setMessageIndex] = useState(() => Math.floor(Math.random() * loadingMessages.length));
-  const [progress, setProgress] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-  const [animIndex, setAnimIndex] = useState(() => Math.floor(Math.random() * LoadingAnimations.length));
-  const [textFading, setTextFading] = useState(false);
-  const [animFading, setAnimFading] = useState(false);
+  const {
+    progress,
+    message,
+    messageFading,
+    SceneComponent,
+    sceneIndex,
+    sceneFading,
+    isCompleting,
+  } = useLoadingStages({ estimatedSeconds, cap: 95, complete, onStatusCheck, pollIntervalMs });
 
-  const [isCompleting, setIsCompleting] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
 
   const onExitRef = useRef(onExitComplete);
   useEffect(() => { onExitRef.current = onExitComplete; }, [onExitComplete]);
 
-  const AnimComponent = LoadingAnimations[animIndex];
-
-  // When `complete` flips to true: fill bar to 100%, wait for it, fade out, navigate
+  // When `complete` flips true: the hook snaps the bar to 100%; here we wait
+  // for the fill (800ms), fade the overlay out, then navigate (1500ms).
+  // Skipped if a status poll already completed — those pages navigate
+  // themselves. Timers clear on unmount so onExitComplete never fires late.
   useEffect(() => {
     if (!complete || isCompleting) return;
-    setIsCompleting(true);
-    setProgress(100);
 
-    // After bar fills (800ms), start fade-out
     const fadeTimer = setTimeout(() => setIsExiting(true), 800);
-
-    // After fade-out (700ms), navigate
     const navTimer = setTimeout(() => onExitRef.current?.(), 1500);
 
     return () => {
@@ -57,63 +68,6 @@ export function LoadingExperience({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complete]);
-
-  // Rotate messages every 4.5s
-  useEffect(() => {
-    if (isCompleting) return;
-    const interval = setInterval(() => {
-      setTextFading(true);
-      setTimeout(() => {
-        setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
-        setTextFading(false);
-      }, 300);
-    }, 4500);
-    return () => clearInterval(interval);
-  }, [isCompleting]);
-
-  // Elapsed timer
-  useEffect(() => {
-    if (isCompleting) return;
-    const interval = setInterval(() => setElapsed((prev) => prev + 1), 1000);
-    return () => clearInterval(interval);
-  }, [isCompleting]);
-
-  // Fake progress curve
-  useEffect(() => {
-    if (isCompleting) return;
-    const fakeProgress = Math.min(95, (1 - Math.exp(-elapsed / (estimatedSeconds * 0.6))) * 100);
-    setProgress(fakeProgress);
-  }, [elapsed, estimatedSeconds, isCompleting]);
-
-  // Poll for real status
-  useEffect(() => {
-    if (!onStatusCheck || isCompleting) return;
-    const interval = setInterval(async () => {
-      try {
-        const result = await onStatusCheck();
-        if (result.progress !== undefined) setProgress(result.progress);
-        // Terminal states: stop fake progress first, then fill to 100%
-        if (result.status === 'completed' || result.status === 'failed' || result.status === 'nsfw') {
-          setIsCompleting(true);
-          setProgress(100);
-        }
-      } catch { /* continue */ }
-    }, pollIntervalMs);
-    return () => clearInterval(interval);
-  }, [onStatusCheck, pollIntervalMs, isCompleting]);
-
-  // Cycle animations every 10s
-  useEffect(() => {
-    if (isCompleting) return;
-    const interval = setInterval(() => {
-      setAnimFading(true);
-      setTimeout(() => {
-        setAnimIndex((prev) => (prev + 1) % LoadingAnimations.length);
-        setAnimFading(false);
-      }, 500);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [isCompleting]);
 
   const overlay = (
     <div
@@ -134,11 +88,11 @@ export function LoadingExperience({
             width: 220,
             height: 220,
             animation: 'floatBob 4s ease-in-out infinite',
-            opacity: animFading ? 0 : 1,
-            transform: animFading ? 'scale(0.9) translateY(10px)' : 'scale(1) translateY(0)',
+            opacity: sceneFading ? 0 : 1,
+            transform: sceneFading ? 'scale(0.9) translateY(10px)' : 'scale(1) translateY(0)',
           }}
         >
-          <AnimComponent key={animIndex} />
+          <SceneComponent key={sceneIndex} />
         </div>
 
         {/* Rotating message */}
@@ -146,11 +100,11 @@ export function LoadingExperience({
           <p
             className="text-center text-base font-medium text-brand-forest/80 transition-[opacity,transform] duration-300 ease-out max-w-sm"
             style={{
-              opacity: textFading ? 0 : 1,
-              transform: textFading ? 'translateY(6px)' : 'translateY(0)',
+              opacity: messageFading ? 0 : 1,
+              transform: messageFading ? 'translateY(6px)' : 'translateY(0)',
             }}
           >
-            {loadingMessages[messageIndex]}
+            {message}
           </p>
         </div>
 
@@ -161,8 +115,8 @@ export function LoadingExperience({
               className="h-full rounded-full"
               style={{
                 width: `${progress}%`,
-                background: 'linear-gradient(90deg, #2D644E, #4A9E7A, #D4A853)',
-                boxShadow: '0 0 10px rgba(45,100,78,0.25)',
+                background: LOADING_BAR_GRADIENT,
+                boxShadow: LOADING_BAR_SHADOW,
                 transition: isCompleting
                   ? 'width 700ms cubic-bezier(0.4, 0, 0.2, 1)'
                   : 'width 1000ms ease-out',

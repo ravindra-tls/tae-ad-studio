@@ -875,8 +875,8 @@ function ProcessingStep() {
             className="h-full rounded-full"
             style={{
               width: `${progress}%`,
-              background: 'linear-gradient(90deg, #2D644E, #4A9E7A, #D4A853)',
-              boxShadow: '0 0 10px rgba(45,100,78,0.25)',
+              background: 'linear-gradient(90deg, #1A5129, #4E8F5B, #C5D933)',
+              boxShadow: '0 0 10px rgba(26,81,41,0.25)',
               transition: 'width 1000ms ease-out',
             }}
           />
