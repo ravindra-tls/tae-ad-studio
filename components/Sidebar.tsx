@@ -19,6 +19,7 @@ import {
   Palette,
   Flag,
   LayoutTemplate,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +37,8 @@ const NAV = [
 
 const ADMIN_NAV = [
   { href: '/admin/products',       label: 'Products',       icon: Package },
-  { href: '/admin/users',          label: 'Users',          icon: Users },
+  { href: '/admin/users',          label: 'Members',        icon: Users },
+  { href: '/admin/invites',        label: 'Invites',        icon: Mail },
   { href: '/admin/templates',      label: 'Templates',      icon: LayoutTemplate },
   { href: '/admin/brand',          label: 'Brand Config',   icon: Palette },
   { href: '/admin/feature-flags',  label: 'Feature Flags',  icon: Flag },

@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
-const ALLOWED_DOMAINS = ['transformative.in', 'theayurvedaexperience.com'];
-
 export default function SignupPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -24,14 +22,9 @@ export default function SignupPage() {
     setError('');
     setLoading(true);
 
-    // Domain check
-    const domain = email.split('@')[1]?.toLowerCase();
-    if (!ALLOWED_DOMAINS.includes(domain)) {
-      setError(`Sign up is restricted to ${ALLOWED_DOMAINS.join(' and ')} email addresses.`);
-      setLoading(false);
-      return;
-    }
-
+    // Access is governed by workspace invites, not by email domain: anyone can
+    // sign up, but without a matching invite they land in a pending state until
+    // a workspace admin invites their email.
     if (password.length < 8) {
       setError('Password must be at least 8 characters.');
       setLoading(false);
@@ -104,12 +97,12 @@ export default function SignupPage() {
             <Input
               id="email"
               type="email"
-              placeholder="you@transformative.in"
+              placeholder="you@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <p className="mt-1 text-xs text-gray-400">Must be a @transformative.in or @theayurvedaexperience.com address</p>
+            <p className="mt-1 text-xs text-gray-400">Use the email your workspace admin invited.</p>
           </div>
           <div>
             <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-brand-teal">Password</label>
