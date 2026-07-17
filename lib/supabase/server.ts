@@ -32,10 +32,19 @@ export async function createClient() {
   );
 }
 
-export async function createServiceClient() {
+// The service client is stateless (no cookies/session) — one instance per
+// server process. Re-creating it per call site added avoidable setup work on
+// every request; the singleton also lets undici reuse warm connections.
+import type { SupabaseClient } from '@supabase/supabase-js';
+let _serviceClient: SupabaseClient | null = null;
+
+export async function createServiceClient(): Promise<SupabaseClient> {
+  if (_serviceClient) return _serviceClient;
   const { createClient } = await import('@supabase/supabase-js');
-  return createClient(
+  _serviceClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
   );
+  return _serviceClient;
 }

@@ -65,56 +65,19 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
   const { editEntries, freshImages, addPending, resolveSubmitted, removeEntry } =
     useEditEntries<GalleryImage>();
 
-  // ── Starred tab: dedicated ?starred=1 fetch (no full pagination needed) ───
-  const [starredImages,  setStarredImages]  = useState<GalleryImage[]>([]);
-  const [starredLoading, setStarredLoading] = useState(false);
-
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // ── Fetch full image data for the starred tab ─────────────────────────────
-  // Fires when: tab switches to starred, the star set changes, or the search/
-  // product filters change while on the starred tab. Uses /api/gallery?starred=1
-  // (server-side star join) and drains pagination up to a sane cap.
-  useEffect(() => {
-    if (activeTab !== 'starred') return;
-    if (starred.size === 0) { setStarredImages([]); return; }
+  // Starred tab reuses the main feed pipeline — the server filters via
+  // ?starred=1 (star join), composing with q/product/template.
+  const starredMode = activeTab === 'starred';
 
-    let cancelled = false;
-    (async () => {
-      setStarredLoading(true);
-      try {
-        const params = new URLSearchParams({ starred: '1', limit: '96' });
-        if (templateId)              params.set('template_id', templateId);
-        if (productFilter !== 'all') params.set('product_id', productFilter);
-        if (activeSearch)            params.set('q', activeSearch);
-
-        const acc: GalleryImage[] = [];
-        for (let p = 1; p <= 6; p++) {          // ≤ 576 starred images
-          params.set('page', String(p));
-          const res  = await fetch(`/api/gallery?${params.toString()}`);
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error ?? 'Failed to load starred images');
-          acc.push(...((data.images ?? []) as GalleryImage[]));
-          if (!data.hasMore) break;
-        }
-        if (!cancelled) setStarredImages(acc);
-      } catch (err) {
-        console.error('[Gallery] starred fetch failed:', err);
-      } finally {
-        if (!cancelled) setStarredLoading(false);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [activeTab, starred, activeSearch, productFilter, templateId]);
-
-  // ── When product filter or search changes: reset and reload from server ───
+  // ── When product filter, search, or starred mode changes: reset and reload ─
   const isFirstRender = useRef(true);
   useEffect(() => {
     // Skip on first render — initialImages already SSR-loaded for 'all'.
     if (isFirstRender.current) { isFirstRender.current = false; return; }
 
-    if (productFilter === 'all' && !activeSearch) {
+    if (!starredMode && productFilter === 'all' && !activeSearch) {
       // Restore SSR data and let infinite scroll take over again.
       setAllImages(initialImages);
       setPage(1);
@@ -132,6 +95,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     if (productFilter !== 'all') params.set('product_id', productFilter);
     if (templateId)              params.set('template_id', templateId);
     if (activeSearch)            params.set('q', activeSearch);
+    if (starredMode)             params.set('starred', '1');
 
     let cancelled = false;
     fetch(`/api/gallery?${params.toString()}`)
@@ -148,7 +112,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productFilter, activeSearch]);
+  }, [productFilter, activeSearch, starredMode]);
 
   // ── Infinite scroll: load next page ──────────────────────────────────────
   const loadMore = useCallback(async () => {
@@ -160,6 +124,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
       if (templateId)              params.set('template_id', templateId);
       if (productFilter !== 'all') params.set('product_id', productFilter);
       if (activeSearch)            params.set('q', activeSearch);
+      if (starredMode)             params.set('starred', '1');
       const res  = await fetch(`/api/gallery?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to load');
@@ -176,7 +141,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, hasMore, page, productFilter, activeSearch, templateId]);
+  }, [isLoading, hasMore, page, productFilter, activeSearch, templateId, starredMode]);
 
   // ── IntersectionObserver sentinel at bottom of grid ──────────────────────
   useEffect(() => {
@@ -218,15 +183,13 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
   }, []);
 
   const filtered = useMemo(() => {
-    // Starred tab uses its own dedicated fetch result — don't mix with allImages.
-    // Product filter + search are server-side (allImages is already scoped) —
-    // only "mine" is client-side.
-    const source = activeTab === 'starred' ? starredImages : allImages;
-    return source.filter((img) => {
+    // Product filter, search, and starred are server-side (allImages is already
+    // scoped) — only "mine" is client-side.
+    return allImages.filter((img) => {
       if (activeTab === 'mine' && img.creator_user_id !== currentUserId) return false;
       return true;
     });
-  }, [allImages, starredImages, activeTab, currentUserId]);
+  }, [allImages, activeTab, currentUserId]);
 
   const swipeQueue = useMemo(
     () => filtered.filter((img) => !ratedImageIds.has(img.id)),
@@ -244,6 +207,15 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     });
     return map;
   }, [filtered]);
+
+  // ── Star toggle — on the starred tab, unstarring removes the image from the
+  //    visible list immediately (server would exclude it on the next fetch anyway).
+  const handleToggleStar = useCallback((id: string) => {
+    if (starredMode && starred.has(id)) {
+      setAllImages((prev) => prev.filter((img) => img.id !== id));
+    }
+    toggleStar(id);
+  }, [starredMode, starred, toggleStar]);
 
   const handleDownload = useCallback((img: GalleryImage) => {
     if (!img.image_url) return;
@@ -318,8 +290,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
 
   const { columns: galleryCols } = useMasonryColumns(galleryAllItems);
 
-  const showLoadingSkeleton =
-    (activeTab === 'starred' && starredLoading) || (isLoading && filtered.length === 0);
+  const showLoadingSkeleton = isLoading && filtered.length === 0;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -507,7 +478,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
                         image={img as unknown as GeneratedImage}
                         index={item.colIdx}
                         isStarred={starred.has(img.id)}
-                        onStar={() => toggleStar(img.id)}
+                        onStar={() => handleToggleStar(img.id)}
                         onDownload={() => handleDownload(img)}
                         onOpenLightbox={() => setLightboxIdx(item.colIdx - editEntries.length)}
                         onUpscale={() => handleUpscale(img)}
@@ -528,11 +499,11 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
               ))}
             </div>
 
-            {/* Infinite scroll sentinel — not used for starred tab (it fetches by star set directly) */}
-            {activeTab !== 'starred' && <div ref={sentinelRef} className="h-1 mt-2" aria-hidden />}
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-1 mt-2" aria-hidden />
 
             {/* Loading indicator */}
-            {(isLoading || (activeTab === 'starred' && starredLoading)) && (
+            {isLoading && (
               <div className="flex justify-center items-center gap-2 py-10 text-brand-slate/50">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-xs">Loading more…</span>
@@ -540,7 +511,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
             )}
 
             {/* End of feed */}
-            {!hasMore && activeTab !== 'starred' && allImages.length > 0 && (
+            {!hasMore && allImages.length > 0 && (
               <p className="text-center text-xs text-brand-slate/40 py-10">
                 All {filteredTotal.toLocaleString()} image{filteredTotal !== 1 ? 's' : ''} loaded
               </p>
@@ -557,7 +528,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
           onClose={() => setLightboxIdx(null)}
           creatorMap={creatorMap}
           onDownload={(img) => handleDownload(img as unknown as GalleryImage)}
-          onStar={(id) => toggleStar(id)}
+          onStar={(id) => handleToggleStar(id)}
           isStarred={(id) => starred.has(id)}
           onEdit={(img) => {
             const g = img as unknown as GalleryImage;

@@ -206,6 +206,9 @@ export function ImageCard({
                     src={image.image_url}
                     alt="Generated ad"
                     fill
+                    // Without sizes, fill defaults to 100vw and every ~250px
+                    // grid tile downloads a ~1920px-wide re-encode.
+                    sizes="(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 25vw"
                     className="object-cover"
                   />
                 )}

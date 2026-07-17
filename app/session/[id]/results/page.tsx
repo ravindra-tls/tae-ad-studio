@@ -1,4 +1,4 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requirePageMember } from '@/lib/auth/guards';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ImageGallery } from '@/components/ImageGallery';
@@ -7,11 +7,9 @@ import { Plus, Pencil } from 'lucide-react';
 import { Breadcrumb } from '@/components/Breadcrumb';
 
 export default async function ResultsPage({ params }: { params: { id: string } }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-
-  const serviceClient = await createServiceClient();
+  // Cached guard — layout already resolved auth; profile rides along, so the
+  // separate usage query is gone.
+  const { user, profile, service: serviceClient } = await requirePageMember();
 
   const { data: session } = await serviceClient
     .from('sessions')
@@ -28,13 +26,7 @@ export default async function ResultsPage({ params }: { params: { id: string } }
     .eq('session_id', params.id)
     .order('created_at', { ascending: false });
 
-  const { data: profile } = await serviceClient
-    .from('profiles')
-    .select('usage_count, usage_cap')
-    .eq('id', user.id)
-    .single();
-
-  const remaining = Math.max(0, (profile?.usage_cap || 30) - (profile?.usage_count || 0));
+  const remaining = Math.max(0, (profile.usage_cap || 30) - (profile.usage_count || 0));
 
   return (
     <div className="animate-fade-in">

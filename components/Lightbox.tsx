@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { createPortal } from 'react-dom';
 import {
   X, ChevronLeft, ChevronRight,
@@ -263,22 +264,17 @@ export function Lightbox({
             <div className={innerClass}>
 
               {/* ── FRONT: Image ────────────────────────────────────── */}
-              <div className="lb-flip-face flex items-center justify-center bg-black/50">
+              <div className="lb-flip-face relative flex items-center justify-center bg-black/50">
 
-                {/* Image */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                {/* Image — next/image so viewing serves an optimized resize;
+                    the Download button still fetches the untouched original. */}
+                <Image
                   key={imgKey}
                   src={current.image_url!}
                   alt="Generated ad"
-                  className="lb-img-enter"
-                  style={{
-                    maxWidth:  '100%',
-                    maxHeight: '100%',
-                    width:     'auto',
-                    height:    'auto',
-                    display:   'block',
-                  }}
+                  fill
+                  sizes="90vw"
+                  className="lb-img-enter object-contain"
                 />
 
                 {/* Download + Star + Edit — fade in from right on hover */}

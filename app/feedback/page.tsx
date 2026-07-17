@@ -1,13 +1,10 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+import { requirePageMember } from '@/lib/auth/guards';
 import { FeedbackWorkspace } from './feedback-workspace';
 
 export default async function FeedbackPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  // Cached guard — layout already resolved auth this request.
+  const { user, service: serviceClient } = await requirePageMember();
 
-  const serviceClient = await createServiceClient();
   const { data: submissions } = await serviceClient
     .from('feedback_submissions')
     .select('*')

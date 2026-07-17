@@ -22,6 +22,7 @@
  *   Server actions:    const { user, service } = await assertAdmin();   // throws
  *   Server components: const ctx = await requirePageAdmin();            // redirects
  */
+import { cache } from 'react';
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
@@ -89,11 +90,17 @@ export function resolveActingWorkspace(profile: AuthProfile): string | null {
   return profile.workspace_id;
 }
 
-/** Authenticated user + their profile + service client. */
-export async function requireUser(): Promise<Guarded> {
+/**
+ * The auth core, deduplicated PER REQUEST via React.cache: a navigation
+ * renders layout + page (+ badge counts), and each used to pay its own
+ * auth.getUser() network round-trip + profiles fetch (~1.5-3s on this
+ * network). Within one server render they now share a single resolution.
+ * Route handlers get a fresh cache per request automatically.
+ */
+const resolveAuth = cache(async (): Promise<{ user: User; profile: AuthProfile } | null> => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, response: jsonError(401, 'Unauthorized') };
+  if (!user) return null;
 
   const service = await createServiceClient();
   const { data: profile } = await service
@@ -101,10 +108,23 @@ export async function requireUser(): Promise<Guarded> {
     .select('*')
     .eq('id', user.id)
     .single();
-  if (!profile) return { ok: false, response: jsonError(401, 'Unauthorized') };
+  if (!profile) return null;
 
-  const p = profile as AuthProfile;
-  return { ok: true, user, profile: p, service, workspaceId: resolveActingWorkspace(p) };
+  return { user, profile: profile as AuthProfile };
+});
+
+/** Authenticated user + their profile + service client. */
+export async function requireUser(): Promise<Guarded> {
+  const auth = await resolveAuth();
+  if (!auth) return { ok: false, response: jsonError(401, 'Unauthorized') };
+  const service = await createServiceClient();
+  return {
+    ok: true,
+    user: auth.user,
+    profile: auth.profile,
+    service,
+    workspaceId: resolveActingWorkspace(auth.profile),
+  };
 }
 
 /** Authenticated admin or dev. */

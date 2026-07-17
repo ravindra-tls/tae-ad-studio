@@ -12,7 +12,7 @@
 
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { requirePageMember } from '@/lib/auth/guards';
 import { isEnabled } from '@/lib/feature-flags';
 import { resolveReferenceImages } from '@/lib/storage/reference-images';
 import { ForgeWorkspace } from './forge-workspace';
@@ -25,18 +25,14 @@ export default async function ForgePage({
   params: { id: string };
   searchParams?: { concept?: string };
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  // Cached guard — the session layout already resolved auth this request.
+  const { user, service } = await requirePageMember();
 
   // ── Flag gate: off → users land on the template flow ─────────────────────
   const flagOn = await isEnabled('concept_forge_ui', user.id);
   if (!flagOn) redirect(`/session/${params.id}/prompts`);
 
   // ── Session (service client + explicit ownership — house pattern) ────────
-  const service = await createServiceClient();
   const { data: sessionRow } = await service
     .from('sessions')
     .select('*, product:products(*)')

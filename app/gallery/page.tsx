@@ -23,46 +23,47 @@ export default async function GalleryPage() {
   if (!ctx.workspaceId) redirect('/dev');
   const { user, profile, service, workspaceId } = ctx;
 
-  // Fetch image IDs this user has already reacted to — used to skip them in swipe mode.
-  // Keyed by user_id (per-viewer), so it needs no workspace scope — the image list it
-  // filters against is already workspace-scoped below.
-  const { data: ratedRows } = await service
-    .from('image_reactions')
-    .select('image_id')
-    .eq('user_id', user.id);
+  // All four reads are independent — one parallel stage instead of four
+  // serial awaits (each round-trip costs ~800ms on this network).
+  const [{ data: ratedRows }, { count }, { data: rawImages }, badgeCounts] = await Promise.all([
+    // Image IDs this user already reacted to — skipped in swipe mode. Keyed
+    // by user_id (per-viewer); the image list it filters is workspace-scoped.
+    service
+      .from('image_reactions')
+      .select('image_id')
+      .eq('user_id', user.id),
+    // Real total count (head-only) — workspace-scoped via the denormalized
+    // column (025); session join only for is_test.
+    service
+      .from('generated_images')
+      .select('id, session:sessions!inner(is_test)', { count: 'exact', head: true })
+      .eq('workspace_id', workspaceId)
+      .eq('session.is_test', false)
+      .eq('status', 'completed')
+      .not('image_url', 'is', null),
+    // First page — SSR initial data for instant first paint
+    service
+      .from('generated_images')
+      .select(`
+        *,
+        session:sessions!inner(
+          is_test,
+          user_id,
+          product:products(id, name, sub_brand, thumbnail_url),
+          profile:profiles(full_name, email)
+        )
+      `)
+      .eq('workspace_id', workspaceId)
+      .eq('session.is_test', false)
+      .eq('status', 'completed')
+      .not('image_url', 'is', null)
+      .order('created_at', { ascending: false })
+      .range(0, PAGE_SIZE - 1),
+    getBadgeCounts(service, profile.role, workspaceId),
+  ]);
 
   const ratedImageIds = new Set((ratedRows ?? []).map((r: any) => r.image_id as string));
-
-  // Real total count (head-only, no data transfer) — scoped to the acting
-  // workspace via the denormalized column (025); session join only for is_test.
-  const { count } = await service
-    .from('generated_images')
-    .select('id, session:sessions!inner(is_test)', { count: 'exact', head: true })
-    .eq('workspace_id', workspaceId)
-    .eq('session.is_test', false)
-    .eq('status', 'completed')
-    .not('image_url', 'is', null);
-
   const totalCount = count ?? 0;
-
-  // First page — SSR initial data for instant first paint, scoped to the acting workspace
-  const { data: rawImages } = await service
-    .from('generated_images')
-    .select(`
-      *,
-      session:sessions!inner(
-        is_test,
-        user_id,
-        product:products(id, name, sub_brand, thumbnail_url),
-        profile:profiles(full_name, email)
-      )
-    `)
-    .eq('workspace_id', workspaceId)
-    .eq('session.is_test', false)
-    .eq('status', 'completed')
-    .not('image_url', 'is', null)
-    .order('created_at', { ascending: false })
-    .range(0, PAGE_SIZE - 1);
 
   const initialImages: GalleryImage[] = (rawImages || []).map((img: any) => ({
     id:                img.id,
@@ -84,8 +85,6 @@ export default async function GalleryPage() {
     product_name:      img.session?.product?.name ?? null,
     product_sub_brand: img.session?.product?.sub_brand ?? null,
   }));
-
-  const badgeCounts = await getBadgeCounts(service, profile.role, workspaceId);
 
   return (
     <AppLayout

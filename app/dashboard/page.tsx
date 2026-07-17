@@ -1,8 +1,7 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Clock, ArrowRight } from 'lucide-react';
+import { requirePageMember, type AuthProfile } from '@/lib/auth/guards';
 import { UsageMeter } from '@/components/UsageMeter';
 import { WorkflowCards } from '@/components/WorkflowCards';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,42 +14,31 @@ export default async function DashboardPage({
 }: {
   searchParams?: { showAll?: string };
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  // Cached guard — the layout already resolved auth this request, so this
+  // costs zero extra round-trips and gives us the profile for free.
+  const ctx = await requirePageMember();
+  const { user, service: serviceClient } = ctx;
+  const profile = ctx.profile as AuthProfile & { cycle_reset?: string | null };
 
-  const serviceClient = await createServiceClient();
   const showAll = searchParams?.showAll === '1';
 
-  const [{ data: profile }, { data: products }] = await Promise.all([
-    serviceClient.from('profiles').select('*').eq('id', user.id).single(),
+  // ── One parallel stage: products + prune (prune returns what it read —
+  //    the surviving sessions and their completed-image rows) ──────────────
+  const [{ data: products }, pruned] = await Promise.all([
     serviceClient.from('products').select('id, name, brand, sub_brand, thumbnail_url').order('brand'),
+    pruneEmptySessions(serviceClient, user.id),
   ]);
 
-  // ── Prune dead sessions before loading the list (shared rules) ──
-  await pruneEmptySessions(serviceClient, user.id);
-
-  // ── Fetch the (now-clean) session list ───────────────────────
+  // ── Derive the (now-clean) session list from prune's read ────────────
   // is_test = admin template-test sessions; never shown in the dashboard.
-  const { data: sessions } = await serviceClient
-    .from('sessions')
-    .select('*, product:products(name, brand, sub_brand, thumbnail_url)')
-    .eq('user_id', user.id)
-    .eq('is_test', false)
-    .order('created_at', { ascending: false });
+  // Prune returns rows ordered created_at desc with the product join.
+  const sessions = pruned.sessions.filter((session: any) => session.is_test === false);
 
-  const sessionIds = (sessions || []).map((session: any) => session.id);
-  const visibleSessions = showAll ? (sessions || []) : (sessions || []).slice(0, 6);
+  const sessionIdSet = new Set(sessions.map((session: any) => session.id));
+  const visibleSessions = showAll ? sessions : sessions.slice(0, 6);
 
-  const { data: generatedImages } = sessionIds.length
-    ? await serviceClient
-        .from('generated_images')
-        .select('session_id, status')
-        .in('session_id', sessionIds)
-    : { data: [] as Array<{ session_id: string; status: string }> };
-
-  const imageCountBySession = (generatedImages || []).reduce<Record<string, number>>((acc, image) => {
-    if (image.status === 'completed') {
+  const imageCountBySession = pruned.images.reduce<Record<string, number>>((acc, image) => {
+    if (image.status === 'completed' && sessionIdSet.has(image.session_id)) {
       acc[image.session_id] = (acc[image.session_id] || 0) + 1;
     }
     return acc;
@@ -128,6 +116,7 @@ export default async function DashboardPage({
                         src={session.product.thumbnail_url}
                         alt={session.product?.name || ''}
                         fill
+                        sizes="40px"
                         className="object-cover"
                       />
                     </div>

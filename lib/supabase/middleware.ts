@@ -31,17 +31,21 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // getSession() reads the cookie LOCALLY — zero network when the access
+  // token is still valid; it only hits Supabase to refresh an expired token
+  // (and the setAll handler above persists the refreshed cookie). The old
+  // auth.getUser() validated against the auth server on EVERY request —
+  // pages, API calls, and <Link> prefetches alike — at ~800ms each on this
+  // network. Security is unchanged: middleware only does the UX redirect;
+  // real authorization is lib/auth/guards.ts, which still uses getUser().
+  const { data: { session } } = await supabase.auth.getSession();
 
-  // Redirect unauthenticated users to login (except auth pages)
+  // Redirect unauthenticated users to login (except auth pages; /api is
+  // excluded at the matcher — routes self-check and return 401 JSON).
   if (
-    !user &&
+    !session &&
     !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/signup') &&
-    !request.nextUrl.pathname.startsWith('/api/auth') &&
-    // Webhook endpoint is called by image providers with no session cookie.
-    // Auth is handled inside the route via WEBHOOK_SECRET header instead.
-    !request.nextUrl.pathname.startsWith('/api/webhook')
+    !request.nextUrl.pathname.startsWith('/signup')
   ) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
@@ -50,7 +54,7 @@ export async function updateSession(request: NextRequest) {
 
   // Redirect authenticated users away from auth pages
   if (
-    user &&
+    session &&
     (request.nextUrl.pathname.startsWith('/login') ||
       request.nextUrl.pathname.startsWith('/signup'))
   ) {
