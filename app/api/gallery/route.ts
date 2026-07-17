@@ -54,10 +54,13 @@ function mapImages(rawImages: any[]) {
 
 // Joined display fields: product + creator via the denormalized FKs; the
 // session join remains ONLY to filter out test sessions.
+// profiles embed MUST name its FK: image_stars created a second
+// generated_images↔profiles relationship (many-to-many), making the bare
+// `profiles` embed ambiguous (PGRST201 — 500s on every page query).
 const IMAGE_SELECT = `
   *,
   product:products(id, name, sub_brand, thumbnail_url),
-  profile:profiles(full_name, email),
+  profile:profiles!generated_images_user_id_fkey(full_name, email),
   session:sessions!inner(is_test)
 `;
 
