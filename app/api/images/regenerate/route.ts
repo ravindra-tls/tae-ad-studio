@@ -5,7 +5,7 @@ import { resolveReferenceImages } from '@/lib/storage/reference-images';
 import type { ProductImage } from '@/types';
 import type { AspectRatio } from '@/lib/image-providers/types';
 
-export const maxDuration = 120; // GPT Image-2 can take up to 2 min for max quality
+export const maxDuration = 300; // quality=high edits take 3-5 min; must exceed the OpenAI client's 280s ceiling
 
 /**
  * POST /api/images/regenerate

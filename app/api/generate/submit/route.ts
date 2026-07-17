@@ -11,6 +11,10 @@ import { compositeMaskedEdit } from '@/lib/image-providers/composite';
 import { assemblePrompt, aiEnrichPrompt } from '@/lib/prompt-assembler';
 import { NextResponse } from 'next/server';
 
+// quality=high 1024x1536 edits regularly take 3-5 min; the OpenAI client's
+// ceiling is 280s — the route budget must exceed it.
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   const ctx = await requireMember();
   if (!ctx.ok) return ctx.response;

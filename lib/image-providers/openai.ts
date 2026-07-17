@@ -34,12 +34,12 @@ function resolveSize(aspectRatio: string): string {
   return ASPECT_SIZE_MAP[aspectRatio] ?? '1024x1024';
 }
 
-// gpt-image edits/generations legitimately take 30–90s. The bare fetch has no
-// timeout and, on this network, long calls get their socket dropped ~30s in
-// (undici surfaces it as the opaque "fetch failed"). Give it a real ceiling and
-// one retry for a dropped connection, and turn the opaque error into something
-// actionable. Tunable via OPENAI_IMAGE_TIMEOUT_MS.
-const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_IMAGE_TIMEOUT_MS) || 180_000;
+// gpt-image edits/generations legitimately take MINUTES at quality=high on
+// 1024x1536 (observed: medium ~140s; high regularly 3-5 min). The ceiling
+// exists to turn this network's silent connection hangs into an actionable
+// error, not to police OpenAI's normal latency — keep it just under the
+// routes' maxDuration (300s). Tunable via OPENAI_IMAGE_TIMEOUT_MS.
+const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_IMAGE_TIMEOUT_MS) || 280_000;
 const DROPPED_CONN_RE = /fetch failed|terminated|socket hang up|ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR/i;
 
 async function openAIFetch(url: string, init: RequestInit, label: string): Promise<Response> {
