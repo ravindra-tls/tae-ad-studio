@@ -7,12 +7,19 @@
  * Back:   full prompt text with Copy + Hide controls
  *
  * Optional `galleryMeta` renders a creator + product footer (gallery only).
+ *
+ * Non-completed states render internally via the optional `status` prop:
+ *   queued/in_progress → AnalyzingImage ring + "Generating…" tile
+ *   failed             → wine-toned tile with error excerpt (+ optional Retry)
+ *   nsfw               → same tile, "Blocked by safety filter", no retry
+ * When `status` is 'completed' or absent the card behaves exactly as before.
  */
 
 import { useState, useCallback } from 'react';
 import Image from 'next/image';
-import { Download, Star, FileText, Copy, Check, X, Pencil, Maximize2, RefreshCw, Loader2 } from 'lucide-react';
+import { Download, Star, FileText, Copy, Check, X, XCircle, Pencil, Maximize2, RefreshCw, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { AnalyzingImage } from '@/components/AnalyzingImage';
 import { cn } from '@/lib/utils';
 import type { GeneratedImage } from '@/types';
 
@@ -24,34 +31,50 @@ export interface GalleryMeta {
 }
 
 interface ImageCardProps {
-  image:          GeneratedImage;
-  index?:         number;
-  isStarred:      boolean;
-  onStar:         () => void;
-  onDownload:     () => void;
-  onOpenLightbox: () => void;
-  onEdit?:        () => void;
+  image:           GeneratedImage;
+  index?:          number;
+  /** Render state (usually image.status). Absent = completed. */
+  status?:         GeneratedImage['status'];
+  isStarred?:      boolean;
+  /** Absent → the Star button is hidden. */
+  onStar?:         () => void;
+  /** Absent → the Download button is hidden. */
+  onDownload?:     () => void;
+  onOpenLightbox?: () => void;
+  onEdit?:         () => void;
   /** Async — ImageCard shows a spinner while it resolves. */
-  onUpscale?:     () => Promise<void>;
+  onUpscale?:      () => Promise<void>;
   /** Re-submit to GPT Image-2 at max quality — fresh generation, not a pixel stretch. */
-  onRegenerate?:  () => Promise<void>;
-  galleryMeta?:   GalleryMeta;
+  onRegenerate?:   () => void | Promise<void>;
+  /** Failed tiles only — renders a Retry button (ignored for nsfw). */
+  onRetry?:        () => void;
+  galleryMeta?:    GalleryMeta;
   /** Hide the "View Prompt" hover button + flip (e.g. dashboard thumbnails) */
-  hidePrompt?:    boolean;
+  hidePrompt?:     boolean;
 }
 
 type AnimDir = 'to-back' | 'to-front';
 
+/** Keep DB error strings card-sized. */
+function errorExcerpt(msg: string | null): string | null {
+  if (!msg) return null;
+  const trimmed = msg.trim();
+  if (!trimmed) return null;
+  return trimmed.length > 140 ? `${trimmed.slice(0, 140).trimEnd()}…` : trimmed;
+}
+
 export function ImageCard({
   image,
   index = 0,
-  isStarred,
+  status,
+  isStarred = false,
   onStar,
   onDownload,
   onOpenLightbox,
   onEdit,
   onUpscale,
   onRegenerate,
+  onRetry,
   galleryMeta,
   hidePrompt = false,
 }: ImageCardProps) {
@@ -109,6 +132,53 @@ export function ImageCard({
     animDir === 'to-front'   && 'anim-to-front',
   );
 
+  // ── Non-completed statuses render dedicated tiles ─────────────────────────
+  const cardStatus  = status ?? 'completed';
+  const aspectStyle = { aspectRatio: (image.aspect_ratio || '1:1').replace(':', '/') };
+
+  if (cardStatus === 'queued' || cardStatus === 'in_progress') {
+    return (
+      <div
+        className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
+        style={{ ...aspectStyle, animationDelay: `${index * 60}ms` }}
+      >
+        <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-brand-forest">
+          <AnalyzingImage />
+          <p className="text-xs text-brand-slate/60 font-medium tracking-wide">Generating…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (cardStatus === 'failed' || cardStatus === 'nsfw') {
+    const blocked = cardStatus === 'nsfw';
+    const detail  = blocked ? null : errorExcerpt(image.error_message);
+    return (
+      <div
+        className="stagger-item rounded-xl border border-brand-wine/30 bg-brand-wine/5 overflow-hidden"
+        style={{ ...aspectStyle, animationDelay: `${index * 60}ms` }}
+      >
+        <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 text-center">
+          <XCircle className="h-8 w-8 text-brand-wine/60" />
+          <p className="text-xs font-medium text-brand-wine">
+            {blocked ? 'Blocked by safety filter' : 'Generation failed'}
+          </p>
+          {detail && (
+            <p className="text-[11px] text-brand-slate/60 leading-snug line-clamp-3">{detail}</p>
+          )}
+          {!blocked && onRetry && (
+            <button
+              onClick={onRetry}
+              className="mt-1 flex items-center gap-1 rounded-lg border border-brand-wine/30 px-2.5 py-1.5 text-[11px] font-medium text-brand-wine hover:bg-brand-wine/10 transition-colors"
+            >
+              <RefreshCw className="h-3 w-3" /> Retry
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div
@@ -146,25 +216,29 @@ export function ImageCard({
                 'absolute top-2.5 right-2.5 flex flex-col gap-1.5 transition-opacity duration-200',
                 (showingBack || isAnimating) ? 'opacity-0 pointer-events-none' : 'opacity-100',
               )}>
-                <button
-                  data-glow=""
-                  onClick={(e) => { e.stopPropagation(); onDownload(); }}
-                  className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150"
-                  title="Download"
-                >
-                  <Download className="h-3.5 w-3.5 text-brand-forest" />
-                </button>
-                <button
-                  data-glow=""
-                  onClick={(e) => { e.stopPropagation(); onStar(); }}
-                  className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150"
-                  title={isStarred ? 'Unstar' : 'Star'}
-                >
-                  <Star className={cn(
-                    'h-3.5 w-3.5',
-                    isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-brand-forest',
-                  )} />
-                </button>
+                {onDownload && (
+                  <button
+                    data-glow=""
+                    onClick={(e) => { e.stopPropagation(); onDownload(); }}
+                    className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150"
+                    title="Download"
+                  >
+                    <Download className="h-3.5 w-3.5 text-brand-forest" />
+                  </button>
+                )}
+                {onStar && (
+                  <button
+                    data-glow=""
+                    onClick={(e) => { e.stopPropagation(); onStar(); }}
+                    className="rounded-full bg-white/90 p-1.5 shadow-md transition-colors duration-150"
+                    title={isStarred ? 'Unstar' : 'Star'}
+                  >
+                    <Star className={cn(
+                      'h-3.5 w-3.5',
+                      isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-brand-forest',
+                    )} />
+                  </button>
+                )}
                 {onEdit && (
                   <button
                     data-glow=""

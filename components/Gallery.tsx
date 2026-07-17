@@ -12,6 +12,8 @@ import { ImageCard } from '@/components/ImageCard';
 import { SwipeView } from '@/components/SwipeView';
 import { AnalyzingImage } from '@/components/AnalyzingImage';
 import { cn, downloadImage } from '@/lib/utils';
+import { useMasonryColumns } from '@/lib/hooks/use-masonry-columns';
+import { useEditEntries, type EditEntry } from '@/lib/hooks/use-edit-entries';
 import type { GalleryImage, GeneratedImage } from '@/types';
 
 // ─── User-scoped starred persistence ─────────────────────────────────────────
@@ -33,13 +35,6 @@ function persistStarred(userId: string, set: Set<string>) {
 type FilterTab  = 'all' | 'mine' | 'starred';
 type ViewMode   = 'grid' | 'swipe';
 
-interface EditEntry {
-  tempId:      string;
-  realId:      string | null;
-  aspectRatio: string;
-  sourceImage: GalleryImage;
-}
-
 interface GalleryProps {
   initialImages: GalleryImage[];
   totalCount:    number;
@@ -51,7 +46,7 @@ interface GalleryProps {
 
 // ─── Masonry item type ────────────────────────────────────────────────────────
 type GalleryColItem =
-  | { kind: 'edit';  entry: EditEntry }
+  | { kind: 'edit';  entry: EditEntry<GalleryImage> }
   | { kind: 'image'; img: GalleryImage; colIdx: number };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -69,25 +64,16 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
   const [lightboxIdx,    setLightboxIdx]    = useState<number | null>(null);
   const [viewMode,       setViewMode]       = useState<ViewMode>('grid');
   const [editingImage,   setEditingImage]   = useState<GeneratedImage | null>(null);
-  const [editEntries,    setEditEntries]    = useState<EditEntry[]>([]);
-  const [freshImages,    setFreshImages]    = useState<GalleryImage[]>([]);
-  const [numCols,        setNumCols]        = useState(3);
+
+  // ── Edit placeholders: add → poll → promote into freshImages ─────────────
+  const { editEntries, freshImages, addPending, resolveSubmitted, removeEntry } =
+    useEditEntries<GalleryImage>();
 
   // ── Starred tab: dedicated fetch by ID (no full pagination needed) ────────
   const [starredImages,  setStarredImages]  = useState<GalleryImage[]>([]);
   const [starredLoading, setStarredLoading] = useState(false);
 
-  const entriesRef  = useRef<EditEntry[]>([]);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  entriesRef.current = editEntries;
-
-  // ── Column count responsive ───────────────────────────────────────────────
-  useEffect(() => {
-    const update = () => setNumCols(window.innerWidth >= 1024 ? 3 : 2);
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
 
   // ── Load starred IDs from localStorage ───────────────────────────────────
   useEffect(() => {
@@ -235,56 +221,6 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     return map;
   }, [filtered]);
 
-  // ── Poll edit entries ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const pollable = editEntries.filter((e) => e.realId !== null);
-    if (pollable.length === 0) return;
-
-    const tick = async () => {
-      const current = entriesRef.current.filter((e) => e.realId !== null);
-      if (current.length === 0) return;
-
-      const results = await Promise.all(
-        current.map(async (entry) => {
-          try {
-            const res  = await fetch(`/api/generate/${entry.realId}/status`);
-            const data = await res.json();
-            return { entry, status: data.status as string, imageUrl: data.imageUrl as string | undefined };
-          } catch {
-            return { entry, status: 'unknown', imageUrl: undefined };
-          }
-        }),
-      );
-
-      const doneIds:   string[]       = [];
-      const completed: GalleryImage[] = [];
-
-      for (const { entry, status, imageUrl } of results) {
-        if (status === 'completed' && imageUrl) {
-          completed.push({
-            ...entry.sourceImage,
-            id:           entry.realId!,
-            image_url:    imageUrl,
-            aspect_ratio: entry.aspectRatio,
-            status:       'completed',
-            created_at:   new Date().toISOString(),
-          });
-          doneIds.push(entry.tempId);
-        } else if (status === 'failed' || status === 'nsfw') {
-          doneIds.push(entry.tempId);
-        }
-      }
-
-      if (completed.length > 0) setFreshImages((prev) => [...completed, ...prev]);
-      if (doneIds.length > 0)   setEditEntries((prev) => prev.filter((e) => !doneIds.includes(e.tempId)));
-    };
-
-    const id = setInterval(tick, 2500);
-    tick();
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editEntries.filter((e) => e.realId).map((e) => e.realId).join(',')]);
-
   // ── Star helpers ──────────────────────────────────────────────────────────
   const toggleStar = useCallback((id: string) => {
     setStarred((prev) => {
@@ -366,8 +302,7 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
     })),
   ];
 
-  const galleryCols: GalleryColItem[][] = Array.from({ length: numCols }, () => []);
-  galleryAllItems.forEach((item, i) => galleryCols[i % numCols].push(item));
+  const { columns: galleryCols } = useMasonryColumns(galleryAllItems);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -609,32 +544,10 @@ export function Gallery({ initialImages, totalCount, currentUserId, ratedImageId
           onPending={(tempId, aspectRatio) => {
             const src = editingImage as unknown as GalleryImage;
             setEditingImage(null);
-            setEditEntries((prev) => [...prev, { tempId, realId: null, aspectRatio, sourceImage: src }]);
+            addPending(tempId, aspectRatio, src);
           }}
-          onSubmitted={(tempId, realId, imageUrl) => {
-            if (imageUrl) {
-              const entry = entriesRef.current.find((e) => e.tempId === tempId);
-              if (entry) {
-                setFreshImages((prev) => {
-                  if (prev.some((img) => img.id === realId)) return prev;
-                  return [{
-                    ...entry.sourceImage,
-                    id:           realId,
-                    image_url:    imageUrl,
-                    aspect_ratio: entry.aspectRatio,
-                    status:       'completed' as const,
-                    created_at:   new Date().toISOString(),
-                  }, ...prev];
-                });
-              }
-              setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
-            } else {
-              setEditEntries((prev) => prev.map((e) => e.tempId === tempId ? { ...e, realId } : e));
-            }
-          }}
-          onFailed={(tempId) => {
-            setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
-          }}
+          onSubmitted={resolveSubmitted}
+          onFailed={removeEntry}
         />
       )}
     </>

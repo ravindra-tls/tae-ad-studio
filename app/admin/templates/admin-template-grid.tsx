@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { createPortal } from 'react-dom';
 import {
-  Pencil, Trash2, X, ChevronLeft, ChevronRight,
+  Pencil, Trash2, X, ChevronRight,
   Check, Loader2, Images, AlertTriangle,
   Sparkles, ImagePlus, FlaskConical, ExternalLink, Camera,
   Archive, Globe,
@@ -15,9 +15,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useSnackbar } from '@/components/ui/snackbar';
-import { cn } from '@/lib/utils';
+import { cn, downloadImage } from '@/lib/utils';
 import { LoadingInline } from '@/components/LoadingInline';
-import type { PromptTemplate } from '@/types';
+import { Lightbox } from '@/components/Lightbox';
+import type { GeneratedImage, PromptTemplate } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,18 +98,36 @@ function GalleryModal({
       .finally(() => setLoading(false));
   }, [templateId, initialImages.length, initialCount]);
 
-  const prev = useCallback(() => setLightbox((i) => (i !== null && i > 0 ? i - 1 : i)), []);
-  const next = useCallback(() => setLightbox((i) => (i !== null && i < images.length - 1 ? i + 1 : i)), [images.length]);
-
+  // While the shared Lightbox is open it owns the keyboard (Esc + arrows) —
+  // the grid only handles Escape when no lightbox is up.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft')  prev();
-      if (e.key === 'ArrowRight') next();
-      if (e.key === 'Escape')     lightbox !== null ? setLightbox(null) : onClose();
+      if (lightbox !== null) return;
+      if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [lightbox, prev, next, onClose]);
+  }, [lightbox, onClose]);
+
+  // Adapt template-image rows into the GeneratedImage shape the canonical
+  // Lightbox renders (flip-to-prompt works off prompt_used).
+  const lightboxImages = useMemo<GeneratedImage[]>(
+    () => images.map((img) => ({
+      id:            img.id,
+      session_id:    '',
+      prompt_used:   img.prompt_used,
+      aspect_ratio:  img.aspect_ratio,
+      image_url:     img.image_url,
+      api_provider:  '',
+      model_id:      null,
+      request_id:    null,
+      template_id:   templateId,
+      status:        'completed',
+      error_message: null,
+      created_at:    img.created_at,
+    })),
+    [images, templateId],
+  );
 
   if (!mounted) return null;
 
@@ -173,37 +192,17 @@ function GalleryModal({
         </div>
       </div>
 
-      {/* Lightbox */}
+      {/* Lightbox — the canonical shared viewer */}
       {lightbox !== null && images[lightbox] && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.96)' }}
-          onClick={() => setLightbox(null)}
-        >
-          <button className="absolute right-4 top-4 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white" onClick={() => setLightbox(null)}>
-            <X className="h-5 w-5" />
-          </button>
-          {lightbox > 0 && (
-            <button className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" onClick={(e) => { e.stopPropagation(); prev(); }}>
-              <ChevronLeft className="h-6 w-6" />
-            </button>
-          )}
-          <div
-            className="relative max-h-[85vh] max-w-[85vw]"
-            style={{ aspectRatio: aspectToCSS(images[lightbox].aspect_ratio) }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Image src={images[lightbox].image_url} alt="" fill className="rounded-xl object-contain" sizes="85vw" />
-          </div>
-          {lightbox < images.length - 1 && (
-            <button className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" onClick={(e) => { e.stopPropagation(); next(); }}>
-              <ChevronRight className="h-6 w-6" />
-            </button>
-          )}
-          <p className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs text-white/60">
-            {lightbox + 1} / {images.length}
-          </p>
-        </div>
+        <Lightbox
+          images={lightboxImages}
+          startIndex={lightbox}
+          onClose={() => setLightbox(null)}
+          onDownload={(img) => {
+            if (!img.image_url) return;
+            downloadImage(img.image_url, `tae-template-${templateId.slice(0, 6)}-${img.id.slice(0, 6)}.png`);
+          }}
+        />
       )}
     </>,
     document.body,

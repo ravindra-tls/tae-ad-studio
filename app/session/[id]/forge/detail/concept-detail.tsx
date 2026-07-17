@@ -242,6 +242,7 @@ function DetailInner({
         {step === 3 && record && (
           <StepImage
             gen={gen}
+            aspectRatio={record.settings?.aspect_ratio}
             onBack={() => setStep(2)}
             onRegenerate={() => void generateImage(record)}
             resultsHref={`/session/${sessionId}/results`}

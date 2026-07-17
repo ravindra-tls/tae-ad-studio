@@ -60,8 +60,8 @@ const LIGHTBOX_STYLES = `
     position: relative; width: 100%; height: 100%;
   }
   .lb-flip-inner.is-back       { transform: rotateY(180deg); }
-  .lb-flip-inner.anim-to-back  { animation: lb-flip-to-back  0.58s cubic-bezier(0.45, 0, 0.55, 1) forwards; }
-  .lb-flip-inner.anim-to-front { animation: lb-flip-to-front 0.58s cubic-bezier(0.45, 0, 0.55, 1) forwards; }
+  .lb-flip-inner.anim-to-back  { animation: lb-flip-to-back  0.52s ease-in-out forwards; }
+  .lb-flip-inner.anim-to-front { animation: lb-flip-to-front 0.52s ease-in-out forwards; }
   .lb-flip-face {
     position: absolute; inset: 0;
     backface-visibility: hidden;
@@ -146,13 +146,13 @@ export function Lightbox({
   const flipToBack = useCallback(() => {
     if (isBack || animDir) return;
     setAnimDir('to-back');
-    setTimeout(() => { setIsBack(true); setAnimDir(null); }, 580);
+    setTimeout(() => { setIsBack(true); setAnimDir(null); }, 520);
   }, [isBack, animDir]);
 
   const flipToFront = useCallback(() => {
     if (!isBack || animDir) return;
     setAnimDir('to-front');
-    setTimeout(() => { setIsBack(false); setAnimDir(null); }, 580);
+    setTimeout(() => { setIsBack(false); setAnimDir(null); }, 520);
   }, [isBack, animDir]);
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -284,25 +284,29 @@ export function Lightbox({
                 {/* Download + Star + Edit — fade in from right on hover */}
                 {showingFront && (
                   <div className="absolute top-3 right-3 flex flex-col gap-2">
-                    <button
-                      data-glow=""
-                      className="lb-action-1 rounded-full bg-white/90 p-2 shadow-md transition-colors"
-                      onClick={(e) => { e.stopPropagation(); onDownload?.(current); }}
-                      title="Download"
-                    >
-                      <Download className="h-4 w-4 text-brand-forest" />
-                    </button>
-                    <button
-                      data-glow=""
-                      className="lb-action-2 rounded-full bg-white/90 p-2 shadow-md transition-colors"
-                      onClick={(e) => { e.stopPropagation(); onStar?.(current.id); }}
-                      title={starred ? 'Unstar' : 'Star'}
-                    >
-                      <Star className={cn(
-                        'h-4 w-4',
-                        starred ? 'fill-yellow-400 text-yellow-400' : 'text-brand-forest',
-                      )} />
-                    </button>
+                    {onDownload && (
+                      <button
+                        data-glow=""
+                        className="lb-action-1 rounded-full bg-white/90 p-2 shadow-md transition-colors"
+                        onClick={(e) => { e.stopPropagation(); onDownload(current); }}
+                        title="Download"
+                      >
+                        <Download className="h-4 w-4 text-brand-forest" />
+                      </button>
+                    )}
+                    {onStar && (
+                      <button
+                        data-glow=""
+                        className="lb-action-2 rounded-full bg-white/90 p-2 shadow-md transition-colors"
+                        onClick={(e) => { e.stopPropagation(); onStar(current.id); }}
+                        title={starred ? 'Unstar' : 'Star'}
+                      >
+                        <Star className={cn(
+                          'h-4 w-4',
+                          starred ? 'fill-yellow-400 text-yellow-400' : 'text-brand-forest',
+                        )} />
+                      </button>
+                    )}
                     {onEdit && (
                       <button
                         data-glow=""

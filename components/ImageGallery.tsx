@@ -1,24 +1,14 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import Image from 'next/image';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { RefreshCw } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
 import { ImageCard } from '@/components/ImageCard';
 import { Lightbox } from '@/components/Lightbox';
 import { EditPromptModal } from '@/components/EditPromptModal';
 import { AnalyzingImage } from '@/components/AnalyzingImage';
-import { cn, downloadImage } from '@/lib/utils';
+import { downloadImage } from '@/lib/utils';
+import { useMasonryColumns } from '@/lib/hooks/use-masonry-columns';
+import { useEditEntries, type EditEntry } from '@/lib/hooks/use-edit-entries';
 import type { GeneratedImage } from '@/types';
-
-// ─── Edit entry ───────────────────────────────────────────────────────────────
-interface EditEntry {
-  tempId:      string;   // client-side UUID, used as React key + reference
-  realId:      string | null; // null = API call still in flight
-  aspectRatio: string;
-  sourceImage: GeneratedImage;
-}
 
 // ─── User-scoped starred persistence ─────────────────────────────────────────
 function starredKey(userId: string) { return `tae-starred-${userId}`; }
@@ -52,73 +42,14 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
   const [starred,       setStarred]      = useState<Set<string>>(new Set());
   const [lightboxIdx,   setLightboxIdx]  = useState<number | null>(null);
   const [editingImage,  setEditingImage] = useState<GeneratedImage | null>(null);
-  const [editEntries,   setEditEntries]  = useState<EditEntry[]>([]);
-  const [freshImages,   setFreshImages]  = useState<GeneratedImage[]>([]);
-  const [numCols,       setNumCols]      = useState(3);
-  const entriesRef = useRef<EditEntry[]>([]);
-  entriesRef.current = editEntries;
 
-  useEffect(() => {
-    const update = () => setNumCols(window.innerWidth >= 1024 ? 3 : 2);
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
+  // ── Edit placeholders: add → poll → promote into freshImages ─────────────
+  const { editEntries, freshImages, addPending, resolveSubmitted, removeEntry } =
+    useEditEntries<GeneratedImage>();
 
   useEffect(() => {
     setStarred(loadStarred(userId));
   }, [userId]);
-
-  // ── Poll edit entries that have a real ID ─────────────────────────────────
-  useEffect(() => {
-    const pollable = editEntries.filter((e) => e.realId !== null);
-    if (pollable.length === 0) return;
-
-    const tick = async () => {
-      const current = entriesRef.current.filter((e) => e.realId !== null);
-      if (current.length === 0) return;
-
-      const results = await Promise.all(
-        current.map(async (entry) => {
-          try {
-            const res  = await fetch(`/api/generate/${entry.realId}/status`);
-            const data = await res.json();
-            return { entry, status: data.status as string, imageUrl: data.imageUrl as string | undefined };
-          } catch {
-            return { entry, status: 'unknown', imageUrl: undefined };
-          }
-        }),
-      );
-
-      const doneIds:   string[]          = [];
-      const completed: GeneratedImage[]  = [];
-
-      for (const { entry, status, imageUrl } of results) {
-        if (status === 'completed' && imageUrl) {
-          completed.push({
-            ...entry.sourceImage,
-            id:           entry.realId!,
-            image_url:    imageUrl,
-            aspect_ratio: entry.aspectRatio,
-            status:       'completed',
-            created_at:   new Date().toISOString(),
-          });
-          doneIds.push(entry.tempId);
-        } else if (status === 'failed' || status === 'nsfw') {
-          doneIds.push(entry.tempId);
-        }
-        // otherwise keep polling
-      }
-
-      if (completed.length > 0) setFreshImages((prev) => [...completed, ...prev]);
-      if (doneIds.length > 0)   setEditEntries((prev) => prev.filter((e) => !doneIds.includes(e.tempId)));
-    };
-
-    const id = setInterval(tick, 2500);
-    tick(); // fire immediately — xAI is sync so result is usually ready at once
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editEntries.filter((e) => e.realId).map((e) => e.realId).join(',')]);
 
   const toggleStar = useCallback((id: string) => {
     setStarred((prev) => {
@@ -141,7 +72,7 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
 
   // Build a flat ordered list of all items to display
   type ColItem =
-    | { kind: 'edit';    entry: EditEntry;    key: string }
+    | { kind: 'edit';    entry: EditEntry<GeneratedImage>; key: string }
     | { kind: 'done';    image: GeneratedImage; globalIdx: number }
     | { kind: 'pending'; image: GeneratedImage; globalIdx: number }
     | { kind: 'failed';  image: GeneratedImage; globalIdx: number };
@@ -153,9 +84,8 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
     ...failedImages.map((img, i) => ({ kind: 'failed' as const, image: img, globalIdx: editEntries.length + completedImages.length + pendingImages.length + i })),
   ];
 
-  // Distribute left-to-right into N columns
-  const masonryCols: ColItem[][] = Array.from({ length: numCols }, () => []);
-  allItems.forEach((item, i) => masonryCols[i % numCols].push(item));
+  // Distribute left-to-right into N responsive columns
+  const { columns: masonryCols } = useMasonryColumns(allItems);
 
   return (
     <>
@@ -195,45 +125,23 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
               }
               if (item.kind === 'pending') {
                 return (
-                  <div
+                  <ImageCard
                     key={item.image.id}
-                    className="stagger-item rounded-xl border border-brand-sage/20 bg-brand-cream/30 overflow-hidden"
-                    style={{
-                      aspectRatio: (item.image.aspect_ratio || '1:1').replace(':', '/'),
-                      animationDelay: `${item.globalIdx * 60}ms`,
-                    }}
-                  >
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-brand-forest">
-                      <AnalyzingImage />
-                      <p className="text-xs text-brand-slate/60 font-medium tracking-wide capitalize">{item.image.status}…</p>
-                    </div>
-                  </div>
+                    image={item.image}
+                    index={item.globalIdx}
+                    status={item.image.status}
+                  />
                 );
               }
-              // failed
+              // failed / nsfw — ImageCard renders the wine tile (retry hidden for nsfw)
               return (
-                <div
+                <ImageCard
                   key={item.image.id}
-                  className="stagger-item rounded-xl border border-red-200 bg-red-50"
-                  style={{
-                    aspectRatio: (item.image.aspect_ratio || '1:1').replace(':', '/'),
-                    animationDelay: `${item.globalIdx * 60}ms`,
-                  }}
-                >
-                  <div className="w-full h-full flex items-center justify-center p-4">
-                    <div className="text-center">
-                      <Badge variant="destructive" className="mb-2">
-                        {item.image.status === 'nsfw' ? 'Content Blocked' : 'Failed'}
-                      </Badge>
-                      <p className="text-xs text-gray-500 mb-3">{item.image.error_message || 'Generation failed'}</p>
-                      {onRegenerate && (
-                        <Button size="sm" variant="outline" onClick={() => onRegenerate(item.image)}>
-                          <RefreshCw className="mr-1 h-3 w-3" /> Retry
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  image={item.image}
+                  index={item.globalIdx}
+                  status={item.image.status}
+                  onRetry={onRegenerate ? () => onRegenerate(item.image) : undefined}
+                />
               );
             })}
           </div>
@@ -268,32 +176,10 @@ export function ImageGallery({ images, userId, sessionId, productId, onRegenerat
             // which blanks the gallery for several seconds. The placeholder renders at
             // the top of the masonry naturally (editEntries always render first).
             setEditingImage(null);
-            setEditEntries((prev) => [...prev, { tempId, realId: null, aspectRatio, sourceImage: editingImage }]);
+            addPending(tempId, aspectRatio, editingImage);
           }}
-          onSubmitted={(tempId, realId, imageUrl) => {
-            if (imageUrl) {
-              // imageUrl arrives directly from the submit route (xAI/OpenAI are synchronous).
-              // Skip polling entirely — remove the placeholder and show the real image at once.
-              const entry = entriesRef.current.find((e) => e.tempId === tempId);
-              if (entry) {
-                setFreshImages((prev) => [{
-                  ...entry.sourceImage,
-                  id:           realId,
-                  image_url:    imageUrl,
-                  aspect_ratio: entry.aspectRatio,
-                  status:       'completed' as const,
-                  created_at:   new Date().toISOString(),
-                }, ...prev]);
-              }
-              setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
-            } else {
-              // Async provider (Vertex AI etc.) — set realId and let polling handle it
-              setEditEntries((prev) => prev.map((e) => e.tempId === tempId ? { ...e, realId } : e));
-            }
-          }}
-          onFailed={(tempId) => {
-            setEditEntries((prev) => prev.filter((e) => e.tempId !== tempId));
-          }}
+          onSubmitted={resolveSubmitted}
+          onFailed={removeEntry}
         />
       )}
     </>
