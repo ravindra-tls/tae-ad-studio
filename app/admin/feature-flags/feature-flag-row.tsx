@@ -55,7 +55,7 @@ export function NewFlagForm() {
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. brief_first_ui"
           disabled={pending}
-          className="w-full rounded border border-brand-teal/20 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+          className="w-full rounded border border-brand-forest/20 px-3 py-2 text-sm focus:border-brand-forest focus:outline-none"
         />
       </div>
       <div className="flex-1">
@@ -67,7 +67,7 @@ export function NewFlagForm() {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="What does this flag gate?"
           disabled={pending}
-          className="w-full rounded border border-brand-teal/20 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+          className="w-full rounded border border-brand-forest/20 px-3 py-2 text-sm focus:border-brand-forest focus:outline-none"
         />
       </div>
       <Button onClick={submit} disabled={pending}>
@@ -200,7 +200,7 @@ export function FeatureFlagRow({ flag, emailsById }: FeatureFlagRowProps) {
               value={percentInput}
               onChange={(e) => setPercentInput(e.target.value)}
               disabled={pending}
-              className="flex-1 accent-brand-teal"
+              className="flex-1 accent-brand-forest"
             />
             <input
               type="number"
@@ -209,7 +209,7 @@ export function FeatureFlagRow({ flag, emailsById }: FeatureFlagRowProps) {
               value={percentInput}
               onChange={(e) => setPercentInput(e.target.value)}
               disabled={pending}
-              className="w-20 rounded border border-brand-teal/20 px-2 py-1 text-sm"
+              className="w-20 rounded border border-brand-forest/20 px-2 py-1 text-sm"
             />
             <span className="text-sm text-brand-slate/60">%</span>
             <Button
@@ -245,7 +245,7 @@ export function FeatureFlagRow({ flag, emailsById }: FeatureFlagRowProps) {
                   addUser();
                 }
               }}
-              className="flex-1 rounded border border-brand-teal/20 px-3 py-1.5 text-sm focus:border-brand-teal focus:outline-none"
+              className="flex-1 rounded border border-brand-forest/20 px-3 py-1.5 text-sm focus:border-brand-forest focus:outline-none"
             />
             <Button size="sm" variant="outline" onClick={addUser} disabled={pending}>
               Add
@@ -258,14 +258,14 @@ export function FeatureFlagRow({ flag, emailsById }: FeatureFlagRowProps) {
               {flag.allowed_user_ids.map((id) => (
                 <span
                   key={id}
-                  className="inline-flex items-center gap-1 rounded-full border border-brand-teal/20 bg-brand-cream/40 px-2 py-0.5 text-xs text-brand-teal"
+                  className="inline-flex items-center gap-1 rounded-full border border-brand-forest/20 bg-brand-cream/40 px-2 py-0.5 text-xs text-brand-forest"
                 >
                   {emailsById[id] ?? id.slice(0, 8) + '…'}
                   <button
                     type="button"
                     onClick={() => removeUser(id)}
                     disabled={pending}
-                    className="rounded-full p-0.5 hover:bg-brand-teal/10"
+                    className="rounded-full p-0.5 hover:bg-brand-forest/10"
                     aria-label="Remove"
                   >
                     <X className="h-3 w-3" />

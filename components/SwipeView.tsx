@@ -74,11 +74,11 @@ type HintPhase =
 const HINT_TRANSITIONS: Record<HintPhase, string> = {
   'idle':      'transform 0.3s ease, opacity 0.3s ease',
   'press-r':   'transform 0.2s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s ease',      // snap down on press
-  'drag-r':    'transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.3s ease', // ease-out drag
-  'release-r': 'transform 0.62s cubic-bezier(0.34, 1.52, 0.64, 1), opacity 0.3s ease', // spring overshoot
+  'drag-r':    'transform 0.55s var(--smooth), opacity 0.3s ease', // ease-out drag
+  'release-r': 'transform 0.62s var(--spring), opacity 0.3s ease', // spring overshoot
   'press-l':   'transform 0.2s cubic-bezier(0.4, 0, 1, 1), opacity 0.2s ease',
-  'drag-l':    'transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.3s ease',
-  'release-l': 'transform 0.62s cubic-bezier(0.34, 1.52, 0.64, 1), opacity 0.3s ease',
+  'drag-l':    'transform 0.55s var(--smooth), opacity 0.3s ease',
+  'release-l': 'transform 0.62s var(--spring), opacity 0.3s ease',
   'done':      'transform 0.3s ease, opacity 0.4s ease',
 };
 
@@ -269,7 +269,7 @@ export function SwipeView({ images }: SwipeViewProps) {
 
             const transition = isTop
               ? (isDragging && !isHinting ? 'none' : hintTrans)
-              : 'transform 0.45s cubic-bezier(0.34, 1.2, 0.64, 1), opacity 0.3s ease';
+              : 'transform 0.45s var(--spring), opacity 0.3s ease';
 
             return (
               <div
@@ -414,7 +414,7 @@ export function SwipeView({ images }: SwipeViewProps) {
             backgroundColor: (hintPhase === 'drag-l' || hintPhase === 'release-l') ? 'rgb(254 242 242)' : 'rgb(255 255 255 / 0.6)',
             color:           (hintPhase === 'drag-l' || hintPhase === 'release-l') ? 'rgb(239 68 68)'   : 'rgb(252 165 165)',
             transform:       (hintPhase === 'drag-l' || hintPhase === 'release-l') ? 'scale(1.1)'       : 'scale(1)',
-            transition: 'all 0.35s cubic-bezier(0.34, 1.4, 0.64, 1)',
+            transition: 'all 0.35s var(--spring)',
           }}
         >
           <ThumbsDown className="h-3.5 w-3.5" />
@@ -427,7 +427,7 @@ export function SwipeView({ images }: SwipeViewProps) {
             backgroundColor: (hintPhase === 'drag-r' || hintPhase === 'release-r') ? 'rgb(240 253 244)' : 'rgb(255 255 255 / 0.6)',
             color:           (hintPhase === 'drag-r' || hintPhase === 'release-r') ? 'rgb(34 197 94)'   : 'rgb(134 239 172)',
             transform:       (hintPhase === 'drag-r' || hintPhase === 'release-r') ? 'scale(1.1)'       : 'scale(1)',
-            transition: 'all 0.35s cubic-bezier(0.34, 1.4, 0.64, 1)',
+            transition: 'all 0.35s var(--spring)',
           }}
         >
           <span className="text-xs font-bold tracking-wide">Like</span>

@@ -37,7 +37,7 @@ export default async function AdminBrandPage() {
 
     return (
       <div className="animate-fade-in">
-        <h1 className="mb-6 text-2xl font-bold text-brand-teal">Brand Config</h1>
+        <h1 className="mb-6 text-2xl font-bold text-brand-forest">Brand Config</h1>
         <Card>
           <CardContent className="p-6 text-sm text-red-700">
             <p className="font-semibold">{copy.title}</p>
@@ -51,7 +51,7 @@ export default async function AdminBrandPage() {
   return (
     <div className="animate-fade-in">
       <div className="mb-6 stagger-item" style={{ animationDelay: '40ms' }}>
-        <h1 className="text-2xl font-bold text-brand-teal">Brand Config</h1>
+        <h1 className="text-2xl font-bold text-brand-forest">Brand Config</h1>
         <p className="mt-1 text-sm text-brand-slate/70">
           Voice, visual system, and non-negotiables that the pipeline pulls into every
           brief, concept, copy, and critique prompt. Single-tenant — one row for the

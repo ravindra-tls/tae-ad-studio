@@ -41,7 +41,7 @@ export default async function AdminFeatureFlagsPage() {
   return (
     <div className="animate-fade-in">
       <div className="mb-6 stagger-item" style={{ animationDelay: '40ms' }}>
-        <h1 className="text-2xl font-bold text-brand-teal">Feature Flags</h1>
+        <h1 className="text-2xl font-bold text-brand-forest">Feature Flags</h1>
         <p className="mt-1 text-sm text-brand-slate/70">
           Control staged rollout of in-progress features. A flag is enabled for a user iff
           the flag is <code className="rounded bg-brand-cream px-1">enabled</code> AND

@@ -230,7 +230,7 @@ function RestoreBtn({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-0.5 text-[9px] font-medium text-brand-teal hover:text-brand-forest bg-brand-cream/80 hover:bg-brand-cream border border-brand-sage/20 rounded px-1.5 py-0.5 transition-colors"
+      className="inline-flex items-center gap-0.5 text-[9px] font-medium text-brand-forest bg-brand-cream/80 hover:bg-brand-cream border border-brand-sage/20 rounded px-1.5 py-0.5 transition-colors"
       title="Restore previous value"
     >
       <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -270,13 +270,13 @@ function StepIndicator({ current }: { current: Step }) {
           {i > 0 && <ChevronRight className="h-3 w-3 text-brand-sage/40" />}
           <div className={cn(
             'flex items-center gap-1.5 text-xs font-medium transition-colors',
-            i < idx && 'text-brand-teal',
+            i < idx && 'text-brand-forest',
             i === idx && 'text-brand-forest',
             i > idx && 'text-brand-sage/50',
           )}>
             <span className={cn(
               'flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors',
-              i < idx && 'bg-brand-teal text-white',
+              i < idx && 'bg-brand-forest text-white',
               i === idx && 'bg-brand-forest text-white',
               i > idx && 'bg-brand-sage/20 text-brand-sage/50',
             )}>
@@ -620,7 +620,7 @@ function InputStep({
     <div className="p-6 space-y-6">
       {existingProduct && (
         <div className="flex items-start gap-3 bg-brand-cream/50 border border-brand-sage/20 rounded-lg p-3">
-          <Info className="h-4 w-4 text-brand-teal mt-0.5 shrink-0" />
+          <Info className="h-4 w-4 text-brand-forest mt-0.5 shrink-0" />
           <p className="text-xs text-brand-slate leading-relaxed">
             You&apos;re enriching <strong className="text-brand-forest">{existingProduct.name}</strong>.
             New data will be merged with existing fields. You&apos;ll review changes before saving.
@@ -675,7 +675,7 @@ function InputStep({
           {urls.length < 5 && (
             <button
               onClick={addUrl}
-              className="flex items-center gap-1 text-xs text-brand-teal hover:text-brand-forest transition-colors"
+              className="flex items-center gap-1 text-xs text-brand-forest transition-colors"
             >
               <Plus className="h-3 w-3" /> Add another URL
             </button>
@@ -723,7 +723,7 @@ function InputStep({
 
           <button
             onClick={() => fileRef.current?.click()}
-            className="w-20 h-20 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-sage/30 hover:border-brand-teal/50 hover:bg-brand-cream/50 transition-colors"
+            className="w-20 h-20 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-sage/30 hover:border-brand-forest/50 hover:bg-brand-cream/50 transition-colors"
           >
             <Upload className="h-4 w-4 text-brand-sage/50" />
             <span className="text-[9px] text-brand-sage/50">Upload</span>
@@ -758,7 +758,7 @@ function InputStep({
               key={doc.id}
               className="flex items-center gap-2.5 p-2 rounded-lg bg-brand-cream/40 border border-brand-sage/15"
             >
-              <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-teal/10 text-brand-teal">
+              <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-forest/10 text-brand-forest">
                 {docLabel(doc.mediaType)}
               </span>
               <div className="flex-1 min-w-0">
@@ -780,7 +780,7 @@ function InputStep({
           {documents.length < MAX_DOCUMENTS && (
             <button
               onClick={() => docFileRef.current?.click()}
-              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border-2 border-dashed border-brand-sage/30 hover:border-brand-teal/50 hover:bg-brand-cream/50 transition-colors text-xs text-brand-sage/70 hover:text-brand-teal"
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border-2 border-dashed border-brand-sage/30 hover:border-brand-forest/50 hover:bg-brand-cream/50 transition-colors text-xs text-brand-sage/70 hover:text-brand-forest"
             >
               <Upload className="h-3.5 w-3.5" />
               {documents.length === 0 ? 'Upload documents' : 'Add another document'}
@@ -912,7 +912,7 @@ function ReviewStep({
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-start gap-2 bg-brand-cream/50 border border-brand-sage/20 rounded-lg p-3">
-        <Eye className="h-4 w-4 text-brand-teal mt-0.5 shrink-0" />
+        <Eye className="h-4 w-4 text-brand-forest mt-0.5 shrink-0" />
         <p className="text-xs text-brand-slate leading-relaxed">
           Review the synthesized data below. Edit any field before saving.
           {ex && <> Fields marked <span className="text-amber-700 font-medium">CHANGED</span> differ from existing data.</>}
@@ -965,7 +965,7 @@ function ReviewStep({
           <div key={i} className="flex items-start gap-2 py-1.5 border-b border-brand-sage/10 last:border-0">
             <span className={cn(
               'text-[10px] font-bold px-1 py-0.5 rounded mt-0.5 shrink-0',
-              ing.key ? 'bg-brand-teal/10 text-brand-teal' : 'bg-gray-100 text-gray-400',
+              ing.key ? 'bg-brand-forest/10 text-brand-forest' : 'bg-gray-100 text-gray-400',
             )}>
               {ing.key ? 'KEY' : 'SEC'}
             </span>
@@ -1125,7 +1125,7 @@ function ReviewStep({
         <ReviewSection title={`Benefits (${draft.context.benefits.length})`}>
           {draft.context.benefits.map((b, i) => (
             <div key={i} className="flex items-center gap-2 py-1 border-b border-brand-sage/10 last:border-0">
-              <span className="text-[10px] font-bold text-brand-teal/60 shrink-0 w-4">{i + 1}</span>
+              <span className="text-[10px] font-bold text-brand-forest/60 shrink-0 w-4">{i + 1}</span>
               <input
                 className={cn(inputCls, 'text-xs')}
                 value={b}
@@ -1375,7 +1375,7 @@ function ColorPaletteEditor({
       {/* Add color */}
       <button
         onClick={add}
-        className="flex items-center gap-1.5 text-xs text-brand-teal hover:text-brand-forest transition-colors mt-1"
+        className="flex items-center gap-1.5 text-xs text-brand-forest transition-colors mt-1"
       >
         <Plus className="h-3 w-3" /> Add color
       </button>

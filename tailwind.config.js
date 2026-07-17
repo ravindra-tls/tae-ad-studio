@@ -21,9 +21,7 @@ module.exports = {
           sage:    '#B9B78F',   // Sage / olive       (muted accent)
           // ── UI state colors ────────────────────────────────────────
           wine:    '#7B1E1E',   // Error / over-limit states (usage meter)
-          // ── Legacy aliases — keeps all existing className refs working
-          teal:    '#1A5129',   // → brand.forest
-          gold:    '#C5D933',   // → brand.lime
+          // ── Text tokens ────────────────────────────────────────────
           navy:    '#1E293B',   // Dark text (legibility)
           slate:   '#475569',   // Secondary text
         },

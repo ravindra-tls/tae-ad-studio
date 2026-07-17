@@ -115,7 +115,7 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-teal">Title</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-forest">Title</label>
               <Input
                 value={feedbackTitle}
                 onChange={(e) => setFeedbackTitle(e.target.value)}
@@ -123,7 +123,7 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-teal">Details</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-forest">Details</label>
               <Textarea
                 value={feedbackMessage}
                 onChange={(e) => setFeedbackMessage(e.target.value)}
@@ -152,7 +152,7 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-teal">Proposal Title</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-forest">Proposal Title</label>
               <Input
                 value={templateTitle}
                 onChange={(e) => setTemplateTitle(e.target.value)}
@@ -160,7 +160,7 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-teal">Template Name</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-forest">Template Name</label>
               <Input
                 value={templateName}
                 onChange={(e) => setTemplateName(e.target.value)}
@@ -168,11 +168,11 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-teal">Category</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-forest">Category</label>
               <select
                 value={templateCategory}
                 onChange={(e) => setTemplateCategory(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-brand-teal/20 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal/50"
+                className="flex h-10 w-full rounded-md border border-brand-forest/20 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-forest/50"
               >
                 {TEMPLATE_CATEGORIES.map((category) => (
                   <option key={category} value={category}>
@@ -182,7 +182,7 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-teal">Why this template matters</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-forest">Why this template matters</label>
               <Textarea
                 value={templateMessage}
                 onChange={(e) => setTemplateMessage(e.target.value)}
@@ -191,7 +191,7 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-brand-teal">Prompt Example</label>
+              <label className="mb-1.5 block text-sm font-medium text-brand-forest">Prompt Example</label>
               <Textarea
                 value={promptExample}
                 onChange={(e) => setPromptExample(e.target.value)}
@@ -222,7 +222,7 @@ export function FeedbackWorkspace({ submissions }: FeedbackWorkspaceProps) {
           ) : (
             <div className="space-y-3">
               {submissions.map((submission) => (
-                <div key={submission.id} className="rounded-lg border border-brand-teal/10 p-4">
+                <div key={submission.id} className="rounded-lg border border-brand-forest/10 p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium text-brand-forest">{submission.title}</p>
                     <Badge variant={submission.kind === 'feedback' ? 'outline' : 'secondary'}>

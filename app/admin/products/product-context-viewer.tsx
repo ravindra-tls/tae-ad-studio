@@ -1324,7 +1324,7 @@ export function ProductContextViewer({ products, researchByProduct, decksByProdu
                 </div>
                 <button
                   onClick={() => { setSynthTarget(product); setSynthModalOpen(true); }}
-                  className="flex items-center gap-1.5 text-xs text-brand-teal hover:text-brand-forest bg-brand-cream/60 border border-brand-teal/20 hover:border-brand-forest/30 rounded-md px-3 py-1.5 transition-all"
+                  className="flex items-center gap-1.5 text-xs text-brand-forest bg-brand-cream/60 border border-brand-forest/20 hover:border-brand-forest/30 rounded-md px-3 py-1.5 transition-all"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Enrich with AI

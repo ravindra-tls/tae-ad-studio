@@ -59,7 +59,7 @@ export default function SignupPage() {
       <Card>
         <CardContent className="py-8 text-center">
           <div className="text-4xl mb-4">📬</div>
-          <h2 className="text-lg font-semibold text-brand-teal mb-2">Check your email</h2>
+          <h2 className="text-lg font-semibold text-brand-forest mb-2">Check your email</h2>
           <p className="text-sm text-gray-500">
             We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account.
           </p>
@@ -82,7 +82,7 @@ export default function SignupPage() {
             <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>
           )}
           <div>
-            <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-brand-teal">Full Name</label>
+            <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-brand-forest">Full Name</label>
             <Input
               id="name"
               type="text"
@@ -93,7 +93,7 @@ export default function SignupPage() {
             />
           </div>
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-brand-teal">Work Email</label>
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-brand-forest">Work Email</label>
             <Input
               id="email"
               type="email"
@@ -105,7 +105,7 @@ export default function SignupPage() {
             <p className="mt-1 text-xs text-gray-400">Use the email your workspace admin invited.</p>
           </div>
           <div>
-            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-brand-teal">Password</label>
+            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-brand-forest">Password</label>
             <Input
               id="password"
               type="password"
@@ -123,7 +123,7 @@ export default function SignupPage() {
           </Button>
           <p className="text-center text-sm text-gray-500">
             Already have an account?{' '}
-            <Link href="/login" className="text-brand-teal hover:underline">Sign in</Link>
+            <Link href="/login" className="text-brand-forest hover:underline">Sign in</Link>
           </p>
         </CardFooter>
       </form>

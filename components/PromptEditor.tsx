@@ -58,8 +58,8 @@ export function PromptEditor({
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <span className="text-lg font-bold text-brand-teal">#{templateNumber}.</span>
-        <span className="text-lg font-semibold text-brand-teal">{templateName}</span>
+        <span className="text-lg font-bold text-brand-forest">#{templateNumber}.</span>
+        <span className="text-lg font-semibold text-brand-forest">{templateName}</span>
         <Badge variant="secondary">{category}</Badge>
       </div>
 
@@ -82,23 +82,23 @@ export function PromptEditor({
 
       {/* Aspect ratio selector */}
       <div className="relative">
-        <label className="mb-1.5 block text-sm font-medium text-brand-teal">Aspect Ratio</label>
+        <label className="mb-1.5 block text-sm font-medium text-brand-forest">Aspect Ratio</label>
         <button
           onClick={() => setShowRatios(!showRatios)}
-          className="flex w-full items-center justify-between rounded-md border border-brand-teal/20 bg-white px-3 py-2 text-sm hover:border-brand-teal/40 transition-colors"
+          className="flex w-full items-center justify-between rounded-md border border-brand-forest/20 bg-white px-3 py-2 text-sm hover:border-brand-forest/40 transition-colors"
         >
           <span>{ASPECT_RATIOS.find((r) => r.value === aspectRatio)?.label || aspectRatio}</span>
           <ChevronDown className={cn('h-4 w-4 text-gray-400 transition-transform', showRatios && 'rotate-180')} />
         </button>
         {showRatios && (
-          <div className="absolute z-10 mt-1 w-full rounded-md border border-brand-teal/20 bg-white py-1 shadow-lg">
+          <div className="absolute z-10 mt-1 w-full rounded-md border border-brand-forest/20 bg-white py-1 shadow-lg">
             {ASPECT_RATIOS.map((r) => (
               <button
                 key={r.value}
                 onClick={() => { setAspectRatio(r.value); setShowRatios(false); }}
                 className={cn(
                   'block w-full px-3 py-2 text-left text-sm hover:bg-brand-cream/50',
-                  aspectRatio === r.value && 'bg-brand-cream font-medium text-brand-teal'
+                  aspectRatio === r.value && 'bg-brand-cream font-medium text-brand-forest'
                 )}
               >
                 {r.label}

@@ -30,7 +30,7 @@ export function UsageMeter({ used, cap, daysUntilReset, compact = false }: Usage
       <div className="flex items-center gap-2 text-sm">
         <div className="h-2 w-16 rounded-full bg-gray-100 overflow-hidden">
           <div
-            className={cn('h-full rounded-full transition-all', isHigh ? 'bg-brand-wine' : 'bg-brand-teal')}
+            className={cn('h-full rounded-full transition-all', isHigh ? 'bg-brand-wine' : 'bg-brand-forest')}
             style={{ width: `${Math.min(100, percentage)}%` }}
           />
         </div>
@@ -43,10 +43,10 @@ export function UsageMeter({ used, cap, daysUntilReset, compact = false }: Usage
 
   if (unlimited) {
     return (
-      <div className="rounded-lg border border-brand-teal/10 bg-white p-4">
+      <div className="rounded-lg border border-brand-forest/10 bg-white p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-brand-teal">Weekly Usage</span>
-          <span className="text-sm font-bold text-brand-teal leading-none" aria-label="Unlimited remaining">{'∞'}</span>
+          <span className="text-sm font-medium text-brand-forest">Weekly Usage</span>
+          <span className="text-sm font-bold text-brand-forest leading-none" aria-label="Unlimited remaining">{'∞'}</span>
         </div>
         <div className="flex items-center justify-between mt-2">
           <span className="text-xs text-gray-500">{used} used (no cap)</span>
@@ -59,16 +59,16 @@ export function UsageMeter({ used, cap, daysUntilReset, compact = false }: Usage
   }
 
   return (
-    <div className="rounded-lg border border-brand-teal/10 bg-white p-4">
+    <div className="rounded-lg border border-brand-forest/10 bg-white p-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-brand-teal">Weekly Usage</span>
-        <span className={cn('text-sm font-bold', isExhausted ? 'text-brand-wine' : 'text-brand-teal')}>
+        <span className="text-sm font-medium text-brand-forest">Weekly Usage</span>
+        <span className={cn('text-sm font-bold', isExhausted ? 'text-brand-wine' : 'text-brand-forest')}>
           {remaining} remaining
         </span>
       </div>
       <div className="h-3 w-full rounded-full bg-gray-100 overflow-hidden">
         <div
-          className={cn('h-full rounded-full transition-all duration-500', isHigh ? 'bg-brand-wine' : 'bg-brand-teal')}
+          className={cn('h-full rounded-full transition-all duration-500', isHigh ? 'bg-brand-wine' : 'bg-brand-forest')}
           style={{ width: `${Math.min(100, percentage)}%` }}
         />
       </div>

@@ -11,7 +11,7 @@ export default function AdminDashboard() {
     <div className="animate-fade-in space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-brand-teal">Admin Dashboard</h1>
+          <h1 className="text-3xl font-bold text-brand-forest">Admin Dashboard</h1>
           <p className="mt-1 text-sm text-brand-slate">
             Monitor generation activity, product coverage, and incoming team requests in one place.
           </p>

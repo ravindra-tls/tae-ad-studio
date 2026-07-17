@@ -99,8 +99,8 @@ export function ReferenceImageManager({ productId, images }: ReferenceImageManag
         onDrop={onDrop}
         className={`flex items-center justify-between gap-3 rounded-lg border border-dashed p-4 transition-colors ${
           dragging
-            ? 'border-brand-teal bg-brand-cream/40'
-            : 'border-brand-teal/30 bg-brand-cream/10'
+            ? 'border-brand-forest bg-brand-cream/40'
+            : 'border-brand-forest/30 bg-brand-cream/10'
         }`}
       >
         <p className="text-xs text-brand-slate/70">
@@ -139,7 +139,7 @@ export function ReferenceImageManager({ productId, images }: ReferenceImageManag
           {images.map((img) => (
             <li
               key={img.id}
-              className="group relative overflow-hidden rounded-lg border border-brand-teal/10 bg-white"
+              className="group relative overflow-hidden rounded-lg border border-brand-forest/10 bg-white"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -157,7 +157,7 @@ export function ReferenceImageManager({ productId, images }: ReferenceImageManag
                 <X className="h-3.5 w-3.5" />
               </button>
 
-              <div className="flex items-center gap-1 border-t border-brand-teal/10 px-2 py-1.5">
+              <div className="flex items-center gap-1 border-t border-brand-forest/10 px-2 py-1.5">
                 {editingId === img.id ? (
                   <>
                     <input
@@ -173,13 +173,13 @@ export function ReferenceImageManager({ productId, images }: ReferenceImageManag
                       disabled={pending}
                       placeholder="Label"
                       autoFocus
-                      className="flex-1 rounded border border-brand-teal/20 px-1.5 py-0.5 text-xs focus:border-brand-teal focus:outline-none"
+                      className="flex-1 rounded border border-brand-forest/20 px-1.5 py-0.5 text-xs focus:border-brand-forest focus:outline-none"
                     />
                     <button
                       type="button"
                       onClick={() => saveLabel(img.id)}
                       disabled={pending}
-                      className="rounded p-1 text-brand-teal hover:bg-brand-teal/10"
+                      className="rounded p-1 text-brand-forest hover:bg-brand-forest/10"
                       aria-label="Save"
                     >
                       <Check className="h-3 w-3" />
@@ -194,7 +194,7 @@ export function ReferenceImageManager({ productId, images }: ReferenceImageManag
                       type="button"
                       onClick={() => startEdit(img)}
                       disabled={pending}
-                      className="rounded p-1 text-brand-slate/60 opacity-0 transition-opacity hover:bg-brand-teal/10 hover:text-brand-teal group-hover:opacity-100"
+                      className="rounded p-1 text-brand-slate/60 opacity-0 transition-opacity hover:bg-brand-forest/10 hover:text-brand-forest group-hover:opacity-100"
                       aria-label="Edit label"
                     >
                       <Pencil className="h-3 w-3" />

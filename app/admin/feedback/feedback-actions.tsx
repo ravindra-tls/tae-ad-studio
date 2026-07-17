@@ -33,7 +33,7 @@ export function FeedbackActions({ submissionId }: FeedbackActionsProps) {
       <select
         value={status}
         onChange={(e) => setStatus(e.target.value as (typeof STATUSES)[number])}
-        className="h-9 rounded-md border border-brand-teal/20 bg-white px-3 text-sm text-brand-teal"
+        className="h-9 rounded-md border border-brand-forest/20 bg-white px-3 text-sm text-brand-forest"
       >
         {STATUSES.map((option) => (
           <option key={option} value={option}>

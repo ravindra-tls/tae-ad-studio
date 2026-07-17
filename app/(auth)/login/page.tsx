@@ -52,7 +52,7 @@ export default function LoginPage() {
             <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>
           )}
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-brand-teal">Email</label>
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-brand-forest">Email</label>
             <Input
               id="email"
               type="email"
@@ -63,7 +63,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-brand-teal">Password</label>
+            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-brand-forest">Password</label>
             <Input
               id="password"
               type="password"
@@ -80,7 +80,7 @@ export default function LoginPage() {
           </Button>
           <p className="text-center text-sm text-gray-500">
             No account?{' '}
-            <Link href="/signup" className="text-brand-teal hover:underline">Sign up</Link>
+            <Link href="/signup" className="text-brand-forest hover:underline">Sign up</Link>
           </p>
         </CardFooter>
       </form>

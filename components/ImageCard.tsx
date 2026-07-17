@@ -258,7 +258,7 @@ export function ImageCard({
                     title={upscaling ? 'Upscaling…' : 'Upscale 2× & download HD'}
                   >
                     {upscaling
-                      ? <Loader2 className="h-3.5 w-3.5 text-brand-teal animate-spin" />
+                      ? <Loader2 className="h-3.5 w-3.5 text-brand-forest animate-spin" />
                       : <Maximize2 className="h-3.5 w-3.5 text-brand-forest" />
                     }
                   </button>
@@ -272,7 +272,7 @@ export function ImageCard({
                     title={regenerating ? 'Regenerating at max quality…' : 'Regenerate at max quality (fresh GPT Image-2 call)'}
                   >
                     {regenerating
-                      ? <Loader2 className="h-3.5 w-3.5 text-brand-teal animate-spin" />
+                      ? <Loader2 className="h-3.5 w-3.5 text-brand-forest animate-spin" />
                       : <RefreshCw className="h-3.5 w-3.5 text-brand-forest" />
                     }
                   </button>

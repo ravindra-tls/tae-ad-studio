@@ -376,7 +376,7 @@ export function PromptWorkspace({
             {briefFirstEnabled && (
               <Link
                 href="/session/new?flow=brief"
-                className="filter-pill flex items-center gap-1.5 rounded-md border border-brand-gold/40 bg-brand-gold/5 px-2.5 py-1 text-brand-gold hover:bg-brand-gold/10 hover:border-brand-gold"
+                className="filter-pill flex items-center gap-1.5 rounded-md border border-brand-lime/40 bg-brand-lime/5 px-2.5 py-1 text-brand-lime hover:bg-brand-lime/10 hover:border-brand-lime"
                 title="Start a Concept Forge session — ideate from a brief instead of a template"
               >
                 <Lightbulb className="h-3 w-3" />

@@ -175,7 +175,7 @@ function GalleryModal({
               {images.map((img, idx) => (
                 <button
                   key={img.id}
-                  className="group relative overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition hover:ring-2 hover:ring-brand-teal/60"
+                  className="group relative overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/10 transition hover:ring-2 hover:ring-brand-forest/60"
                   style={{ aspectRatio: aspectToCSS(img.aspect_ratio) }}
                   onClick={() => setLightbox(idx)}
                 >

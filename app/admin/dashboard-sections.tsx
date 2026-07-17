@@ -53,7 +53,7 @@ export async function DashboardSummarySection() {
       value: imageCount || 0,
       sublabel: `${inFlightCount || 0} in flight`,
       icon: ImageIcon,
-      accent: 'text-brand-gold',
+      accent: 'text-brand-lime',
     },
     {
       label: 'Products',
@@ -76,7 +76,7 @@ export async function DashboardSummarySection() {
             <div className="flex items-center justify-between px-5 py-4">
               <div>
                 <p className="text-sm font-medium text-brand-slate">{label}</p>
-                <p className="mt-2 text-4xl font-bold text-brand-teal">{value}</p>
+                <p className="mt-2 text-4xl font-bold text-brand-forest">{value}</p>
                 <p className="mt-1 text-xs text-brand-slate">{sublabel}</p>
               </div>
               <div className="rounded-2xl bg-brand-cream p-3">
@@ -140,13 +140,13 @@ export async function DashboardMainSection() {
               <CardTitle>Recent Generated Images</CardTitle>
               <CardDescription>Latest successful generations across all sessions</CardDescription>
             </div>
-            <Link href="/gallery" className="text-sm text-brand-teal hover:underline flex items-center gap-1">
+            <Link href="/gallery" className="text-sm text-brand-forest hover:underline flex items-center gap-1">
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </CardHeader>
           <CardContent>
             {!recentImages?.length ? (
-              <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-brand-teal/15 bg-brand-cream/20 text-sm text-brand-slate">
+              <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-brand-forest/15 bg-brand-cream/20 text-sm text-brand-slate">
                 No generated images yet.
               </div>
             ) : (
@@ -161,14 +161,14 @@ export async function DashboardMainSection() {
               <CardTitle>Products Snapshot</CardTitle>
               <CardDescription>Recently added or refreshed product cards</CardDescription>
             </div>
-            <Link href="/admin/products" className="text-sm text-brand-teal hover:underline flex items-center gap-1">
+            <Link href="/admin/products" className="text-sm text-brand-forest hover:underline flex items-center gap-1">
               View more <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2">
               {(recentProducts || []).slice(0, 4).map((product: any) => (
-                <div key={product.id} className="flex gap-3 rounded-xl border border-brand-teal/10 p-3">
+                <div key={product.id} className="flex gap-3 rounded-xl border border-brand-forest/10 p-3">
                   <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-lg bg-brand-cream/40">
                     {product.thumbnail_url ? (
                       <Image
@@ -206,13 +206,13 @@ export async function DashboardMainSection() {
           <CardContent className="space-y-4">
             <div className="rounded-xl bg-brand-cream/40 p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-brand-slate">Pending Proposals</p>
-              <p className="mt-2 text-3xl font-bold text-brand-teal">{pendingProposalsCount || 0}</p>
-              <Link href="/admin/feedback" className="mt-3 inline-flex items-center gap-1 text-sm text-brand-teal hover:underline">
+              <p className="mt-2 text-3xl font-bold text-brand-forest">{pendingProposalsCount || 0}</p>
+              <Link href="/admin/feedback" className="mt-3 inline-flex items-center gap-1 text-sm text-brand-forest hover:underline">
                 Open proposals <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
 
-            <div className="rounded-xl border border-brand-teal/10 p-4">
+            <div className="rounded-xl border border-brand-forest/10 p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-brand-slate">Latest Proposal</p>
               {latestProposal ? (
                 <div className="mt-3 space-y-2">

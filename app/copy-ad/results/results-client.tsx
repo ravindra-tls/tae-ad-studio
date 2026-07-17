@@ -332,7 +332,7 @@ function ResultCard({
 
         <Link
           href={`/session/${session.id}/results`}
-          className="mt-2 flex items-center gap-1 text-[11px] text-brand-teal hover:underline"
+          className="mt-2 flex items-center gap-1 text-[11px] text-brand-forest hover:underline"
         >
           Open in gallery <ExternalLink className="h-3 w-3" />
         </Link>

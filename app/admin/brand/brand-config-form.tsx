@@ -135,7 +135,7 @@ export function BrandConfigForm({ config }: BrandConfigFormProps) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={pending}
-            className="w-full rounded border border-brand-teal/20 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+            className="w-full rounded border border-brand-forest/20 px-3 py-2 text-sm focus:border-brand-forest focus:outline-none"
           />
         </div>
         <div>
@@ -146,7 +146,7 @@ export function BrandConfigForm({ config }: BrandConfigFormProps) {
             value={strictness}
             onChange={(e) => setStrictness(e.target.value as StrictnessValue)}
             disabled={pending}
-            className="w-full rounded border border-brand-teal/20 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+            className="w-full rounded border border-brand-forest/20 px-3 py-2 text-sm focus:border-brand-forest focus:outline-none"
           >
             <option value="off">off — brand guardrails disabled</option>
             <option value="loose">loose — encourage, don&apos;t enforce</option>
@@ -175,7 +175,7 @@ export function BrandConfigForm({ config }: BrandConfigFormProps) {
             }}
             placeholder='e.g. "Never claim instant results"'
             disabled={pending}
-            className="flex-1 rounded border border-brand-teal/20 px-3 py-1.5 text-sm focus:border-brand-teal focus:outline-none"
+            className="flex-1 rounded border border-brand-forest/20 px-3 py-1.5 text-sm focus:border-brand-forest focus:outline-none"
           />
           <Button size="sm" variant="outline" onClick={addRule} disabled={pending}>
             Add
@@ -188,14 +188,14 @@ export function BrandConfigForm({ config }: BrandConfigFormProps) {
             {nonNegotiables.map((rule, i) => (
               <li
                 key={`${rule}-${i}`}
-                className="flex items-center gap-2 rounded border border-brand-teal/10 bg-brand-cream/30 px-3 py-1.5 text-sm"
+                className="flex items-center gap-2 rounded border border-brand-forest/10 bg-brand-cream/30 px-3 py-1.5 text-sm"
               >
-                <span className="flex-1 text-brand-teal">{rule}</span>
+                <span className="flex-1 text-brand-forest">{rule}</span>
                 <button
                   type="button"
                   onClick={() => removeRule(i)}
                   disabled={pending}
-                  className="rounded-full p-1 text-brand-slate/60 hover:bg-brand-teal/10 hover:text-brand-teal"
+                  className="rounded-full p-1 text-brand-slate/60 hover:bg-brand-forest/10 hover:text-brand-forest"
                   aria-label="Remove"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -227,7 +227,7 @@ export function BrandConfigForm({ config }: BrandConfigFormProps) {
           disabled={pending}
           spellCheck={false}
           rows={8}
-          className="w-full rounded border border-brand-teal/20 px-3 py-2 font-mono text-xs focus:border-brand-teal focus:outline-none"
+          className="w-full rounded border border-brand-forest/20 px-3 py-2 font-mono text-xs focus:border-brand-forest focus:outline-none"
         />
         <p className="mt-1 text-xs text-brand-slate/50">
           e.g. <code>{"{ \"tone\": [\"warm\", \"expert\"], \"phrases_we_use\": [...] }"}</code>
@@ -255,7 +255,7 @@ export function BrandConfigForm({ config }: BrandConfigFormProps) {
           disabled={pending}
           spellCheck={false}
           rows={8}
-          className="w-full rounded border border-brand-teal/20 px-3 py-2 font-mono text-xs focus:border-brand-teal focus:outline-none"
+          className="w-full rounded border border-brand-forest/20 px-3 py-2 font-mono text-xs focus:border-brand-forest focus:outline-none"
         />
         <p className="mt-1 text-xs text-brand-slate/50">
           e.g. <code>{"{ \"palette\": {...}, \"layout_rules\": [...], \"typography\": {...} }"}</code>
@@ -271,7 +271,7 @@ export function BrandConfigForm({ config }: BrandConfigFormProps) {
         </p>
       )}
 
-      <div className="flex items-center justify-between border-t border-brand-teal/10 pt-4">
+      <div className="flex items-center justify-between border-t border-brand-forest/10 pt-4">
         <p className="text-xs text-brand-slate/40">
           Last updated {new Date(config.updated_at).toLocaleString()}
         </p>

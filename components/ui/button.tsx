@@ -4,18 +4,18 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-forest focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-brand-teal text-white hover:bg-brand-teal/90',
+        default: 'bg-brand-forest text-white hover:bg-brand-forest/90',
         destructive: 'bg-brand-wine text-white hover:bg-brand-wine/90',
-        outline: 'border border-brand-teal/20 bg-white hover:bg-brand-cream text-brand-teal',
-        secondary: 'bg-brand-cream text-brand-teal hover:bg-brand-cream/80',
-        ghost: 'hover:bg-brand-cream/50 text-brand-teal',
-        gold: 'bg-brand-gold text-white hover:bg-brand-gold/90',
+        outline: 'border border-brand-forest/20 bg-white hover:bg-brand-cream text-brand-forest',
+        secondary: 'bg-brand-cream text-brand-forest hover:bg-brand-cream/80',
+        ghost: 'hover:bg-brand-cream/50 text-brand-forest',
+        gold: 'bg-brand-lime text-white hover:bg-brand-lime/90',
         wine: 'bg-brand-wine text-white hover:bg-brand-wine/90',
-        link: 'text-brand-teal underline-offset-4 hover:underline',
+        link: 'text-brand-forest underline-offset-4 hover:underline',
       },
       size: {
         default: 'h-10 px-4 py-2',
