@@ -64,19 +64,7 @@ const IMAGE_SELECT = `
   session:sessions!inner(is_test)
 `;
 
-/** Escape LIKE wildcards in user text (backslash is Postgres' default escape). */
-function escapeLike(text: string): string {
-  return text.replace(/[\\%_]/g, (m) => `\\${m}`);
-}
-
-/**
- * A double-quoted PostgREST literal for use inside .or() — quotes the value so
- * commas/dots/parens in user text can't break the or-expression parser, and
- * escapes `\` and `"` per PostgREST string rules.
- */
-function quoteForOr(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
+// (LIKE-escaping for search lives inside the search_gallery_images RPC.)
 
 // Impossible uuid — forces an empty result while keeping one query shape.
 const NO_MATCH_ID = '00000000-0000-0000-0000-000000000000';
@@ -150,9 +138,42 @@ export async function GET(request: Request) {
   const from       = (page - 1) * limit;
   const to         = from + limit - 1;
 
-  // ?starred=1 → the caller's starred ids (one query, then a plain in-list).
+  const starredMode = url.searchParams.get('starred') === '1';
+
+  // ?q= → ONE round-trip: the search_gallery_images RPC (migration 027) does
+  // per-word AND matching over prompt/product/template/creator fields, all
+  // filters (including stars), the page, and the window count in a single
+  // statement. The old path was 5 queries (3 resolvers + count + page).
+  if (q) {
+    const { data: rpcRows, error: rpcErr } = await service.rpc('search_gallery_images', {
+      p_workspace:    workspaceId,
+      p_q:            q,
+      p_template:     templateId,
+      p_product:      productId,
+      p_starred_user: starredMode ? user.id : null,
+      p_limit:        limit,
+      p_offset:       from,
+    });
+    if (rpcErr) return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+
+    const rows  = (rpcRows ?? []) as Array<{ row_json: any; total: number }>;
+    const total = rows.length > 0 ? Number(rows[0].total) : 0;
+    // RPC rows are flat (product/creator fields prefixed _) — adapt to the
+    // same GalleryImage shape mapImages produces.
+    const images = mapImages(rows.map((r) => ({
+      ...r.row_json,
+      product: r.row_json.product_id
+        ? { id: r.row_json.product_id, name: r.row_json._product_name, sub_brand: r.row_json._product_sub_brand, thumbnail_url: r.row_json._product_thumbnail_url }
+        : null,
+      profile: { full_name: r.row_json._creator_full_name, email: r.row_json._creator_email },
+    })));
+
+    return NextResponse.json({ images, total, page, hasMore: to < total - 1 });
+  }
+
+  // ?starred=1 (non-search) → the caller's starred ids, then a plain in-list.
   let starredIds: string[] | null = null;
-  if (url.searchParams.get('starred') === '1') {
+  if (starredMode) {
     const { data: starRows, error: starErr } = await service
       .from('image_stars')
       .select('image_id')
@@ -161,39 +182,6 @@ export async function GET(request: Request) {
       .limit(500);
     if (starErr) return NextResponse.json({ error: starErr.message }, { status: 500 });
     starredIds = (starRows ?? []).map((r: any) => r.image_id as string);
-  }
-
-  // ?q= → one ilike arm on prompt_used, OR-combined with server-resolved id
-  // lists (products / templates / creators), all on denormalized columns.
-  let searchOr: string | null = null;
-  if (q) {
-    const pattern = `%${escapeLike(q)}%`;
-    const quoted  = quoteForOr(pattern);
-
-    const [{ data: prodRows }, { data: tplRows }, { data: profRows }] = await Promise.all([
-      service.from('products')
-        .select('id')
-        .eq('workspace_id', workspaceId)
-        .ilike('name', pattern)
-        .limit(100),
-      service.from('prompt_templates')
-        .select('id')
-        .ilike('name', pattern)
-        .limit(100),
-      service.from('profiles')
-        .select('id')
-        .or(`full_name.ilike.${quoted},email.ilike.${quoted}`)
-        .limit(50),
-    ]);
-
-    const arms = [`prompt_used.ilike.${quoted}`];
-    const productIds  = (prodRows ?? []).map((r: any) => r.id as string);
-    const templateIds = (tplRows  ?? []).map((r: any) => r.id as string);
-    const userIds     = (profRows ?? []).map((r: any) => r.id as string);
-    if (productIds.length  > 0) arms.push(`product_id.in.(${productIds.join(',')})`);
-    if (templateIds.length > 0) arms.push(`template_id.in.(${templateIds.join(',')})`);
-    if (userIds.length     > 0) arms.push(`user_id.in.(${userIds.join(',')})`);
-    searchOr = arms.join(',');
   }
 
   // ONE base predicate shared by the count and page queries.
@@ -210,27 +198,24 @@ export async function GET(request: Request) {
       // Empty star list → guaranteed no results (single query shape kept)
       chain = chain.in('id', starredIds.length > 0 ? starredIds : [NO_MATCH_ID]);
     }
-    if (searchOr) chain = chain.or(searchOr);
     return chain;
   };
 
-  // Real total count (head-only query — no data transfer)
-  const { count, error: countErr } = await baseQuery(
-    service.from('generated_images').select('id, session:sessions!inner(is_test)', { count: 'exact', head: true })
-  );
+  // Count (head-only) and page rows are independent — one parallel stage.
+  const [{ count, error: countErr }, { data: rawImages, error }] = await Promise.all([
+    baseQuery(
+      service.from('generated_images').select('id, session:sessions!inner(is_test)', { count: 'exact', head: true })
+    ),
+    baseQuery(
+      service.from('generated_images').select(IMAGE_SELECT)
+    )
+      .order('created_at', { ascending: false })
+      .range(from, to),
+  ]);
   if (countErr) return NextResponse.json({ error: countErr.message }, { status: 500 });
+  if (error)    return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const total = count ?? 0;
-
-  // Paginated image rows with joined product / creator display fields
-  const { data: rawImages, error } = await baseQuery(
-    service.from('generated_images').select(IMAGE_SELECT)
-  )
-    .order('created_at', { ascending: false })
-    .range(from, to);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
+  const total  = count ?? 0;
   const images = mapImages(rawImages ?? []);
 
   return NextResponse.json({
