@@ -94,6 +94,12 @@ export async function POST(request: Request) {
         model_id:     modelId,
         template_id:  templateId,
         status:       'queued',
+        // Denormalized ownership (migration 025). The session above is created
+        // with is_test: true, so these rows stay out of gallery/search anyway —
+        // stamping keeps the columns non-null and the predicates uniform.
+        user_id:      user.id,
+        product_id:   product.id,
+        workspace_id: workspaceId,
       })
       .select()
       .single();

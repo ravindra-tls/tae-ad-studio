@@ -7,7 +7,8 @@
  */
 
 import { redirect }    from 'next/navigation';
-import { requirePageMember } from '@/lib/auth/guards';
+import { requirePageMember, isAdminRole, isDevRole } from '@/lib/auth/guards';
+import { getBadgeCounts } from '@/lib/get-profile';
 import { AppLayout }   from '@/components/AppLayout';
 import { Gallery }     from '@/components/Gallery';
 import Link            from 'next/link';
@@ -51,10 +52,11 @@ export default async function TemplateGalleryPage({
   const ratedImageIds = new Set((ratedRows ?? []).map((r: any) => r.image_id as string));
 
   // ── Total count scoped to this template ───────────────────────────────────
+  // Workspace scope via the denormalized column (025); session join only for is_test.
   const { count } = await service
     .from('generated_images')
-    .select('id, session:sessions!inner(workspace_id)', { count: 'exact', head: true })
-    .eq('session.workspace_id', workspaceId)
+    .select('id, session:sessions!inner(is_test)', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
     .eq('session.is_test', false)
     .eq('template_id', params.id)
     .eq('status', 'completed')
@@ -68,13 +70,13 @@ export default async function TemplateGalleryPage({
     .select(`
       *,
       session:sessions!inner(
-        workspace_id,
+        is_test,
         user_id,
         product:products(id, name, sub_brand, thumbnail_url),
         profile:profiles(full_name, email)
       )
     `)
-    .eq('session.workspace_id', workspaceId)
+    .eq('workspace_id', workspaceId)
     .eq('session.is_test', false)
     .eq('template_id', params.id)
     .eq('status', 'completed')
@@ -103,11 +105,15 @@ export default async function TemplateGalleryPage({
     product_sub_brand: img.session?.product?.sub_brand ?? null,
   }));
 
+  const badgeCounts = await getBadgeCounts(service, profile.role, workspaceId);
+
   return (
     <AppLayout
       fullName={profile.full_name ?? null}
       email={profile.email ?? user.email ?? null}
-      isAdmin={profile.role === 'admin'}
+      isAdmin={isAdminRole(profile.role)}
+      isDev={isDevRole(profile.role)}
+      badgeCounts={badgeCounts}
     >
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="mb-6 flex items-start gap-4">

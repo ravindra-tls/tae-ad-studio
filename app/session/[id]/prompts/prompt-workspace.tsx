@@ -4,8 +4,10 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useSnackbar } from '@/components/ui/snackbar';
-import { Sparkles, Pencil, X, Check, RefreshCcw, AlertTriangle, ImagePlus, Trash2, Lightbulb } from 'lucide-react';
+import { Sparkles, Pencil, X, Check, RefreshCcw, AlertTriangle, ImagePlus, Trash2, Lightbulb, SearchX } from 'lucide-react';
 import Link from 'next/link';
 import { Breadcrumb } from '@/components/Breadcrumb';
 import { cn } from '@/lib/utils';
@@ -59,6 +61,7 @@ export function PromptWorkspace({
   const snackbar = useSnackbar();
   const [selectedIds, setSelectedIds]       = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [templateSearch, setTemplateSearch] = useState('');
   const [isSubmitting, setIsSubmitting]     = useState(false);
   const [generateComplete, setGenerateComplete] = useState(false);
   const [pendingNavUrl, setPendingNavUrl]   = useState<string | null>(null);
@@ -169,10 +172,13 @@ export function PromptWorkspace({
     return productFallbackImages;
   };
 
-  const filtered =
-    categoryFilter === 'All'
-      ? templates
-      : templates.filter((t) => t.category === categoryFilter);
+  // Category pills + free-text search compose (name + category, case-insensitive)
+  const searchTerm = templateSearch.trim().toLowerCase();
+  const filtered = templates.filter((t) => {
+    if (categoryFilter !== 'All' && t.category !== categoryFilter) return false;
+    if (searchTerm && !`${t.name} ${t.category}`.toLowerCase().includes(searchTerm)) return false;
+    return true;
+  });
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -460,7 +466,7 @@ export function PromptWorkspace({
         </div>
       </div>
 
-      {/* Category filter + select controls */}
+      {/* Category filter + search + select controls */}
       <div className="mb-5 flex flex-wrap items-center gap-2">
         {CATEGORIES.map((cat) => (
           <button
@@ -476,6 +482,14 @@ export function PromptWorkspace({
             {cat}
           </button>
         ))}
+
+        <SearchInput
+          value={templateSearch}
+          onChange={setTemplateSearch}
+          placeholder="Search templates…"
+          resultCount={searchTerm ? filtered.length : undefined}
+          className="w-full sm:w-56"
+        />
 
         <div className="ml-auto flex items-center gap-3 text-xs text-brand-slate">
           <button
@@ -501,6 +515,15 @@ export function PromptWorkspace({
           )}
         </div>
       </div>
+
+      {/* Zero-match state for the template search */}
+      {filtered.length === 0 && (
+        <EmptyState
+          icon={SearchX}
+          title={searchTerm ? <>No templates match &ldquo;{templateSearch.trim()}&rdquo;</> : 'No templates in this category'}
+          subtitle="Try a different search term or category."
+        />
+      )}
 
       {/* Template grid — 2 cols max so two-column cards have room */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Modal } from '@/components/ui/modal';
 import { useSnackbar } from '@/components/ui/snackbar';
 import { cn, downloadImage } from '@/lib/utils';
@@ -787,6 +788,7 @@ export function AdminTemplateGrid({
   const [templates,           setTemplates]           = useState(initialTemplates);
   const [imagesByTemplate,    setImagesByTemplate]    = useState(initialImagesByTemplate);
   const [categoryFilter,      setCategoryFilter]      = useState('All');
+  const [search,              setSearch]              = useState('');
   const [editingId,           setEditingId]           = useState<string | null>(null);
   const [confirmDeleteId,     setConfirmDeleteId]     = useState<string | null>(null);
   const [deleting,            setDeleting]            = useState(false);
@@ -828,9 +830,13 @@ export function AdminTemplateGrid({
   };
   const missingPreviewCount = templates.filter((t) => !t.preview_image_url).length;
 
-  const filtered = categoryFilter === 'All'
-    ? templates
-    : templates.filter((t) => t.category === categoryFilter);
+  // Category pills + free-text search compose (name + category, case-insensitive)
+  const searchTerm = search.trim().toLowerCase();
+  const filtered = templates.filter((t) => {
+    if (categoryFilter !== 'All' && t.category !== categoryFilter) return false;
+    if (searchTerm && !`${t.name} ${t.category}`.toLowerCase().includes(searchTerm)) return false;
+    return true;
+  });
 
   const handleCreated = (newTemplate: PromptTemplate) => {
     // Optimistically prepend — page refresh will reorder by number
@@ -896,6 +902,12 @@ export function AdminTemplateGrid({
             {cat}
           </button>
         ))}
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search templates…"
+          className="w-full sm:w-56"
+        />
         <div className="ml-auto flex items-center gap-3">
           {missingPreviewCount > 0 && (
             <button

@@ -275,6 +275,10 @@ export async function POST(request: Request) {
         api_provider: apiProvider,
         model_id:     modelId,
         status:       'queued',
+        // Denormalized ownership (migration 025) — gallery/search scope predicates.
+        user_id:      user.id,
+        product_id:   product.id,
+        workspace_id: workspaceId,
       })
       .select()
       .single();

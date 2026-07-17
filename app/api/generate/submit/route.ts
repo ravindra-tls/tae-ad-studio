@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   //    client bypasses RLS, so we enforce ownership manually before writing).
   const { data: sessionRow } = await serviceClient
     .from('sessions')
-    .select('id, workspace_id')
+    .select('id, workspace_id, product_id')
     .eq('id', sessionId)
     .eq('user_id', user.id)
     .single();
@@ -94,6 +94,10 @@ export async function POST(request: Request) {
       model_id:     modelId,
       template_id:  templateId || null,
       status:       'queued',
+      // Denormalized ownership (migration 025) — gallery/search scope predicates.
+      user_id:      user.id,
+      product_id:   productId || sessionRow.product_id || null,
+      workspace_id: workspaceId,
     })
     .select()
     .single();

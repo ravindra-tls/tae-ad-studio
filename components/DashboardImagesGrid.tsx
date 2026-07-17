@@ -4,35 +4,20 @@ import { useState } from 'react';
 import { ImageCard } from '@/components/ImageCard';
 import { Lightbox } from '@/components/Lightbox';
 import { downloadImage } from '@/lib/utils';
+import { useStarred } from '@/lib/hooks/use-starred';
 import type { GeneratedImage } from '@/types';
 
 interface Props {
   images: GeneratedImage[];
+  /** Enables the one-time 'tae-starred-<userId>' localStorage import inside useStarred. */
+  userId?: string;
 }
 
-const LS_KEY = 'tae-dashboard-starred';
-
-function loadStarred(): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    return new Set(JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as string[]);
-  } catch {
-    return new Set();
-  }
-}
-
-export function DashboardImagesGrid({ images }: Props) {
+export function DashboardImagesGrid({ images, userId }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
-  const [starred,     setStarred]     = useState<Set<string>>(loadStarred);
 
-  function toggleStar(id: string) {
-    setStarred(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      localStorage.setItem(LS_KEY, JSON.stringify([...next]));
-      return next;
-    });
-  }
+  // DB-backed stars (one-time localStorage import happens inside the hook).
+  const { starred, toggleStar } = useStarred(userId);
 
   function handleDownload(img: GeneratedImage) {
     if (!img.image_url) return;

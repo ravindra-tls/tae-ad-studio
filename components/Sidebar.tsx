@@ -23,12 +23,15 @@ import {
   Terminal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { BadgeCounts } from '@/lib/get-profile';
 
 interface SidebarProps {
-  fullName:  string | null;
-  email:     string | null;
-  isAdmin:   boolean;
-  isDev?:    boolean;
+  fullName:     string | null;
+  email:        string | null;
+  isAdmin:      boolean;
+  isDev?:       boolean;
+  /** Count pills for the Proposals / Dev · Feedback nav items (hidden when collapsed). */
+  badgeCounts?: BadgeCounts;
 }
 
 const NAV = [
@@ -48,9 +51,17 @@ const ADMIN_NAV = [
   { href: '/admin/stats',          label: 'Stats',          icon: BarChart3 },
 ] as Array<{ href: string; label: string; icon: typeof Package; devOnly?: boolean }>;
 
-export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProps) {
+export function Sidebar({ fullName, email, isAdmin, isDev = false, badgeCounts }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+
+  /** Pending-count pill for a nav item — hidden when the sidebar is collapsed. */
+  const countPill = (count: number | undefined) =>
+    !collapsed && (count ?? 0) > 0 ? (
+      <span className="ml-auto rounded-full bg-brand-lime px-1.5 text-[10px] font-bold leading-4 text-brand-forest tabular-nums shrink-0">
+        {count}
+      </span>
+    ) : null;
 
   // Persist preference
   useEffect(() => {
@@ -192,6 +203,7 @@ export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProp
                   >
                     {label}
                   </span>
+                  {href === '/dev/feedback' && countPill(badgeCounts?.pendingFeedback)}
                 </Link>
               ))}
             </>
@@ -239,6 +251,7 @@ export function Sidebar({ fullName, email, isAdmin, isDev = false }: SidebarProp
                       >
                         <Icon className="h-3.5 w-3.5 shrink-0" />
                         {label}
+                        {href === '/admin/feedback' && countPill(badgeCounts?.pendingProposals)}
                       </Link>
                     );
                   })}

@@ -91,7 +91,7 @@ export async function DashboardSummarySection() {
 }
 
 export async function DashboardMainSection() {
-  const { service: supabase, workspaceId } = await requirePageAdmin();
+  const { service: supabase, workspaceId, user } = await requirePageAdmin();
   if (!workspaceId) redirect('/dev');
 
   const [
@@ -150,7 +150,7 @@ export async function DashboardMainSection() {
                 No generated images yet.
               </div>
             ) : (
-              <DashboardImagesGrid images={recentImages as any} />
+              <DashboardImagesGrid images={recentImages as any} userId={user.id} />
             )}
           </CardContent>
         </Card>

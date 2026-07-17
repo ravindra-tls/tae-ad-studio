@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { requirePageMember } from '@/lib/auth/guards';
+import { requirePageMember, isAdminRole, isDevRole } from '@/lib/auth/guards';
+import { getBadgeCounts } from '@/lib/get-profile';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyAdResults, type CopyAdSessionRow } from './results-client';
 import type { GeneratedImage } from '@/types';
@@ -9,7 +10,7 @@ export default async function CopyAdResultsPage({
 }: {
   searchParams?: { group?: string };
 }) {
-  const { user, profile, service } = await requirePageMember();
+  const { user, profile, service, workspaceId } = await requirePageMember();
 
   const groupId = searchParams?.group;
   if (!groupId) redirect('/dashboard');
@@ -46,11 +47,15 @@ export default async function CopyAdResultsPage({
     }
   }
 
+  const badgeCounts = await getBadgeCounts(service, profile.role, workspaceId);
+
   return (
     <AppLayout
       fullName={profile.full_name ?? null}
       email={profile.email ?? user.email ?? null}
-      isAdmin={profile.role === 'admin'}
+      isAdmin={isAdminRole(profile.role)}
+      isDev={isDevRole(profile.role)}
+      badgeCounts={badgeCounts}
     >
       <CopyAdResults
         groupId={groupId}

@@ -154,6 +154,10 @@ export async function POST(request: Request) {
         status: 'queued',
         forge_concept_id: conceptRow.id,
         template_id: templateId,
+        // Denormalized ownership (migration 025) — gallery/search scope predicates.
+        user_id: user.id,
+        product_id: session.product_id,
+        workspace_id: session.workspace_id,
       })
       .select()
       .single();
